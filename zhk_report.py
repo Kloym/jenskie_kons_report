@@ -6,6 +6,7 @@ import os
 import re
 import sys
 import xlrd
+from zhk_charts import AnalyticsBuilder, AnalyticsTheme
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -107,9 +108,12 @@ class DepartmentData:
     records: dict[tuple[str, str, str, Decimal], AggregatedService] = field(
         default_factory=dict
     )
+    daily_quantity: dict[date, Decimal] = field(default_factory=dict)
+    daily_amount: dict[date, Decimal] = field(default_factory=dict)
 
     def add(
         self,
+        service_date: date,
         doctor: str,
         service_code: str,
         service_name: str,
@@ -131,6 +135,16 @@ class DepartmentData:
             )
             self.records[key] = record
         record.quantity += quantity
+
+        self.daily_quantity[service_date] = (
+            self.daily_quantity.get(service_date, Decimal("0"))
+            + quantity
+        )
+
+        self.daily_amount[service_date] = (
+            self.daily_amount.get(service_date, Decimal("0"))
+            + tariff * quantity
+        )
 
     def sorted_records(self) -> list[AggregatedService]:
         return sorted(
@@ -542,7 +556,7 @@ class SourceReader:
                 if bucket is None:
                     bucket = DepartmentData(name=department)
                     departments[department_key] = bucket
-                bucket.add(doctor, service_code, service_name, tariff, quantity)
+                bucket.add(row_date, doctor, service_code, service_name, tariff, quantity)
 
             stats.aggregated_rows = sum(len(item.records) for item in departments.values())
             return (
@@ -678,7 +692,7 @@ class ReportWorkbookWriter:
         worksheet = workbook.active
         worksheet.title = "Отчёт"
         worksheet.sheet_view.showGridLines = False
-        worksheet.freeze_panes = "A6"
+        worksheet.freeze_panes = "A5"
         worksheet.sheet_properties.tabColor = self.TEAL
 
         workbook.properties.title = department.name
@@ -692,12 +706,34 @@ class ReportWorkbookWriter:
         )
 
         self._write_title(worksheet, department.name, date_from, date_to)
-        first_data_row = 6
+        first_data_row = 5
         last_data_row = first_data_row + len(records) - 1
         self._write_summary(worksheet, records, first_data_row, last_data_row)
         self._write_headers(worksheet)
         self._write_rows(worksheet, records, first_data_row)
         self._format_layout(worksheet, last_data_row)
+        analytics_builder = AnalyticsBuilder(
+            AnalyticsTheme(
+                primary=self.NAVY,
+                accent=self.TEAL,
+                pale_primary=self.PALE_BLUE,
+                pale_accent=self.PALE_TEAL,
+                text=self.TEXT,
+                muted=self.MUTED,
+                grid=self.GRID,
+                white=self.WHITE,
+            )
+        )
+
+        analytics_builder.build(
+            workbook=workbook,
+            department_name=department.name,
+            records=records,
+            daily_quantity=department.daily_quantity,
+            daily_amount=department.daily_amount,
+            date_from=date_from,
+            date_to=date_to,
+        )
 
         destination.parent.mkdir(parents=True, exist_ok=True)
         temporary = destination.with_suffix(".tmp.xlsx")
@@ -765,7 +801,6 @@ class ReportWorkbookWriter:
         worksheet["D3"].number_format = "#,##0"
         worksheet["F3"].number_format = '#,##0.00" ₽"'
         worksheet.row_dimensions[3].height = 28
-        worksheet.row_dimensions[4].height = 8
 
     def _write_headers(self, worksheet: object) -> None:
         headers = (
@@ -777,11 +812,11 @@ class ReportWorkbookWriter:
             "Сумма, руб.",
         )
         for column, value in enumerate(headers, start=1):
-            cell = worksheet.cell(row=5, column=column, value=value)
+            cell = worksheet.cell(row=4, column=column, value=value)
             cell.fill = PatternFill("solid", fgColor=self.NAVY)
             cell.font = Font(name="Aptos", size=10, bold=True, color=self.WHITE)
             cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        worksheet.row_dimensions[5].height = 34
+        worksheet.row_dimensions[4].height = 34
 
     def _write_rows(
         self,
@@ -851,9 +886,9 @@ class ReportWorkbookWriter:
         for column, width in widths.items():
             worksheet.column_dimensions[column].width = width
 
-        worksheet.auto_filter.ref = f"A5:F{last_data_row}"
+        worksheet.auto_filter.ref = f"A4:F{last_data_row}"
         worksheet.print_area = f"A1:F{last_data_row}"
-        worksheet.print_title_rows = "1:5"
+        worksheet.print_title_rows = "1:4"
         worksheet.page_setup.orientation = "landscape"
         worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
         worksheet.page_setup.fitToWidth = 1
@@ -1055,4 +1090,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    if len(sys.argv) == 1:
+        from zhk_gui import launch_gui
+
+        launch_gui(ReportApplication)
+    else:
+        raise SystemExit(main())
