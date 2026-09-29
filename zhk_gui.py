@@ -12,6 +12,7 @@ from datetime import date, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Callable, Sequence, cast
+from zhk_compare import launch_compare
 
 try:
     import tkinter as tk
@@ -478,6 +479,21 @@ class ExcelReportGUI:
             style="Accent.TButton",
         )
         self.start_button.grid(row=0, column=2)
+        compare_button = ttk.Button(
+            actions,
+            text="Сравнение за 14 дней",
+            command=lambda: launch_compare(self.root),
+        )
+
+        compare_button.grid(
+            row=1,
+            column=0,
+            columnspan=3,
+            sticky="ew",
+            pady=(8, 0),
+        )
+
+        self._interactive_widgets.append(compare_button)
 
         log_frame = ttk.Frame(outer, style="App.TFrame")
         log_frame.grid(row=3, column=0, sticky="nsew", pady=(14, 0))
