@@ -11,6 +11,7 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from io import BytesIO
 from pathlib import Path
+from calendar import monthrange
 
 from openpyxl import load_workbook
 from openpyxl.cell.cell import MergedCell
@@ -159,6 +160,64 @@ class PeriodData:
     excluded: Counter = field(default_factory=Counter)
     empty_services: int = 0
     outside: int = 0
+    restored_tariffs: Counter = field(default_factory=Counter)
+
+def collect_tariffs(sheet, header, epoch, start, end):
+    """Собирает заполненные тарифы нужных ЖК за выбранный период."""
+    c = header.columns
+    tariffs = defaultdict(set)
+
+    for row in sheet.iter_rows(min_row=header.row_number + 1):
+        try:
+            if not identify_department(
+                clean_text(row[c.department].value)
+            ):
+                continue
+
+            dt = parse_date(row[c.service_date].value, epoch=epoch)
+            if not start <= dt <= end:
+                continue
+
+            code = code_key(
+                service_code_from_cell(row[c.service_code])
+            )
+            raw_tariff = row[c.tariff].value
+
+            if not code or not clean_text(raw_tariff):
+                continue
+
+            tariff = number(raw_tariff)
+            if tariff >= 0:
+                tariffs[code].add(tariff)
+
+        except (ValueError, TypeError, IndexError):
+            continue
+
+    return tariffs
+
+
+def resolve_tariff(raw_tariff, code, tariffs):
+    """Заполняет только пустой тариф при однозначном совпадении кода."""
+    if clean_text(raw_tariff):
+        return number(raw_tariff)
+
+    options = tariffs.get(code, set())
+
+    if not options:
+        raise ValueError(
+            f"пустой тариф для услуги {code}: "
+            "в выбранном периоде нет заполненного тарифа этого кода"
+        )
+
+    if len(options) > 1:
+        variants = ", ".join(str(value) for value in sorted(options))
+        raise ValueError(
+            f"пустой тариф для услуги {code}: "
+            f"найдены разные тарифы ({variants}); "
+            "однозначная подстановка невозможна"
+        )
+
+    return next(iter(options))
 
 
 def read_period(path, start, end):
@@ -201,6 +260,8 @@ def read_period(path, start, end):
 
         sheet, header = candidates[0]
         c = header.columns
+
+        tariffs = collect_tariffs(sheet, header, book.epoch, start, end)
 
         for row_no, row in enumerate(
             sheet.iter_rows(
@@ -288,7 +349,11 @@ def read_period(path, start, end):
                     )
 
                 quantity = number(values[c.quantity])
-                tariff = number(values[c.tariff])
+                raw_tariff = values[c.tariff]
+                tariff = resolve_tariff(raw_tariff, code, tariffs)
+
+                if not clean_text(raw_tariff):
+                    data.restored_tariffs[(code, tariff)] += 1
 
                 if (
                     quantity < 0
@@ -348,32 +413,20 @@ def read_period(path, start, end):
 
 
 def validate_periods(a, b, c, d):
-    if any(
-        (end - start).days != 13
-        for start, end in ((a, b), (c, d))
-    ):
-        raise ReportError(
-            "Каждый период должен содержать "
-            "ровно 14 календарных дней."
-        )
+    for start, end in ((a, b), (c, d)):
+        if start > end:
+            raise ReportError(
+                "Дата начала периода не может быть позже даты окончания."
+            )
 
-    if (
-        (a.year, a.month) != (b.year, b.month)
-        or (c.year, c.month) != (d.year, d.month)
-    ):
-        raise ReportError(
-            "Каждый период должен находиться "
-            "внутри одного месяца."
-        )
+        if (start.year, start.month) != (end.year, end.month):
+            raise ReportError(
+                "Каждый период должен находиться внутри одного месяца."
+            )
 
-    if (
-        c.year * 12 + c.month
-        - (a.year * 12 + a.month)
-        != 1
-    ):
+    if c.year * 12 + c.month - (a.year * 12 + a.month) != 1:
         raise ReportError(
-            "Нужны предыдущий "
-            "и следующий за ним месяц."
+            "Нужны предыдущий и следующий за ним месяц."
         )
 
 
@@ -835,7 +888,7 @@ def build_book(template, old, new, dates):
     writer.text(
         "Подразделения",
         "A1",
-        "Сравнение подразделений за 14 дней",
+        "Сравнение подразделений за выбранные периоды",
     )
     writer.text(
         "Подразделения",
@@ -996,7 +1049,7 @@ def build_book(template, old, new, dates):
     writer.text(
         "Коротко",
         "A1",
-        "14 дней работы: сравнение двух периодов",
+        "Сравнение двух периодов",
     )
     writer.text(
         "Коротко",
@@ -1273,13 +1326,13 @@ def build_book(template, old, new, dates):
             "Записи предыдущего периода: "
             f"{min(old.dates):%d.%m.%Y}–"
             f"{max(old.dates):%d.%m.%Y}; "
-            f"дней с услугами {len(old.dates)} из 14."
+            f"дней с услугами {len(old.dates)} из {(b - a).days + 1}."
         ),
         (
             "Записи текущего периода: "
             f"{min(new.dates):%d.%m.%Y}–"
             f"{max(new.dates):%d.%m.%Y}; "
-            f"дней с услугами {len(new.dates)} из 14."
+            f"дней с услугами {len(new.dates)} из {(d - c).days + 1}."
         ),
         (
             "Строк без данных услуги: "
@@ -1288,6 +1341,12 @@ def build_book(template, old, new, dates):
             "совпадающие ФИО не различаются."
         ),
     ]
+
+    notes.append(
+        "Автоматически заполнено пустых тарифов: "
+        f"{sum(old.restored_tariffs.values())} в предыдущем периоде; "
+        f"{sum(new.restored_tariffs.values())} в текущем."
+    )
 
     for label, data in zip(labels, (old, new)):
         if data.excluded:
@@ -1369,6 +1428,16 @@ def describe(data, label, unknown=()):
             + ", ".join(unknown)
         )
 
+        if data.restored_tariffs:
+            parts.append(
+                "Автоматически заполнены пустые тарифы: "
+                + "; ".join(
+                    f"код {code}: {tariff} руб., строк: {count}"
+                    for (code, tariff), count
+                    in sorted(data.restored_tariffs.items())
+                )
+            )
+
     return "\n".join(parts)
 
 
@@ -1399,7 +1468,7 @@ def launch_compare(parent=None):
     from zhk_gui import CalendarPopup
 
     window = tk.Toplevel(parent) if parent else tk.Tk()
-    window.title("Сравнение услуг за 14 дней")
+    window.title("Сравнение услуг за выбранные периоды")
     window.withdraw()
 
     width = min(1020, window.winfo_screenwidth() - 60)
@@ -1590,7 +1659,7 @@ def launch_compare(parent=None):
 
     ttk.Label(
         form,
-        text="Сравнение за 14 дней",
+        text="Сравнение периодов",
         style="CompareTitle.TLabel",
     ).grid(row=0, column=0, sticky="w")
 
@@ -1715,20 +1784,7 @@ def launch_compare(parent=None):
         )
 
         def selected(chosen):
-            try:
-                start, end = _comparison_span(
-                    chosen,
-                    edge,
-                )
-            except ValueError as exc:
-                messagebox.showinfo(
-                    "Период в одном месяце",
-                    str(exc),
-                    parent=window,
-                )
-                return
-
-            set_period(index, start, end)
+            values[key].set(chosen.strftime("%d.%m.%Y"))
 
         CalendarPopup(
             window,
@@ -1871,21 +1927,27 @@ def launch_compare(parent=None):
 
     def align_previous():
         start = parse_date(values["from1"].get())
-        month = start.replace(day=1) - timedelta(days=1)
+        end = parse_date(values["to1"].get())
 
-        try:
-            a, b = _comparison_span(
-                month.replace(day=start.day)
-            )
-        except ValueError:
+        if start > end or (start.year, start.month) != (end.year, end.month):
             messagebox.showinfo(
-                "Выберите период",
-                "В предыдущем месяце эти 14 дней "
-                "не помещаются. Выберите для него "
-                "даты через календарь.",
+                "Проверьте даты",
+                "Сначала выберите корректный период текущего месяца.",
                 parent=window,
             )
             return
+
+        previous_end = start.replace(day=1) - timedelta(days=1)
+        a = previous_end.replace(
+            day=min(start.day, previous_end.day)
+        )
+
+        if end.day == monthrange(end.year, end.month)[1]:
+            b = previous_end
+        else:
+            b = previous_end.replace(
+                day=min(end.day, previous_end.day)
+            )
 
         set_period(0, a, b)
 
@@ -2043,11 +2105,13 @@ def launch_compare(parent=None):
         valid = True
 
         try:
-            validate_periods(*read_dates())
+            a, b, c, d = read_dates()
+            validate_periods(a, b, c, d)
 
             hint.set(
-                "14 дней в каждом периоде, обе даты включены. "
-                "Конец меняется автоматически."
+                f"Предыдущий период: {(b - a).days + 1} дн.; "
+                f"текущий: {(d - c).days + 1} дн. "
+                "Обе даты включены. Начало и конец выбираются отдельно."
             )
             hint_label.configure(
                 foreground="#526779"
@@ -2135,7 +2199,7 @@ def launch_compare(parent=None):
             parent=window,
             defaultextension=".xlsx",
             initialfile=(
-                f"Анализ_14_дней_"
+                f"Анализ_периодов_"
                 f"{dates[0]:%Y-%m-%d}_"
                 f"{dates[2]:%Y-%m-%d}.xlsx"
             ),
