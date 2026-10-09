@@ -29,11 +29,21 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
 
-UNITS = (
+BASE_UNITS = (
     "ЦЖЗ на Лобненской",
     "ЦЖЗ на Петрозаводской",
     "ЦЖЗ на Планетной",
     "ЖК №10",
+)
+UNITS = BASE_UNITS + tuple(f"ЖК №{n}" for n in (1, 3, 5, 6, 7, 11, 13, "13Н"))
+PETRO_CLINICS = {"ЖК №1", "ЖК №11", "ЖК №13", "ЖК №13Н"}
+PLANET_CLINICS = {"ЖК №3", "ЖК №5", "ЖК №6", "ЖК №7"}
+PETRO_MERGER_DATE = date(2026, 7, 1)
+PLANET_MERGER_DATE = date(2026, 9, 1)
+MERGER_NOTE = (
+    f"ЖК №1, 11, 13 и 13Н → Петрозаводская с {PETRO_MERGER_DATE:%d.%m.%Y}; "
+    f"ЖК №3, 5, 6 и 7 → Планетная с {PLANET_MERGER_DATE:%d.%m.%Y}. "
+    "До этих дат ЖК учитываются отдельно. Дата берётся из строки услуги."
 )
 MONTHS = (
     "", "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
@@ -82,26 +92,36 @@ def normalize_key(value):
     return re.sub(r"[^0-9a-zа-я]+", " ", clean_text(value).casefold().replace("ё", "е")).strip()
 
 
-def identify_department(value):
+def merge_department(unit, service_date):
+    """Применяет реорганизацию с даты её вступления в силу, включая день начала."""
+    if isinstance(service_date, datetime):
+        service_date = service_date.date()
+    if unit in PETRO_CLINICS and service_date >= PETRO_MERGER_DATE:
+        return BASE_UNITS[1]
+    if unit in PLANET_CLINICS and service_date >= PLANET_MERGER_DATE:
+        return BASE_UNITS[2]
+    return unit
+
+
+def identify_department(value, service_date=None):
+    """Без даты возвращает исходное название ЖК; с датой — группу для отчёта."""
     key = normalize_key(value)
     women = "женск" in key or re.search(r"(?:^| )(?:жк|цжз)(?=$| |[0-9])", key)
     if not women:
         return None
-    for fragment, unit in zip(("лобненск", "петрозаводск", "планетн"), UNITS):
-        if fragment in key:
-            return unit
     match = re.search(r"(?:женская консультация|жк)\s*([0-9]+)\s*([нh])?(?![0-9a-zа-я])", key)
     if match:
         number = int(match[1])
         suffix = match[2]
-        if number == 13:
-            return UNITS[1]
-        if suffix:
+        if suffix and number != 13:
             return None
-        if number in (3, 5, 6, 7):
-            return UNITS[2]
-        if number == 10:
-            return UNITS[3]
+        unit = f"ЖК №{number}" + ("Н" if suffix else "")
+        if unit in UNITS:
+            return merge_department(unit, service_date) if service_date is not None else unit
+        return None
+    for fragment, unit in zip(("лобненск", "петрозаводск", "планетн"), BASE_UNITS):
+        if fragment in key:
+            return unit
     return None
 
 
@@ -221,6 +241,11 @@ class Report:
     @property
     def months(self):
         return list(range(self.start_month, self.end_month + 1))
+
+    @property
+    def units(self):
+        present = {unit for month, unit in self.groups if self.start_month <= month <= self.end_month}
+        return tuple(unit for unit in UNITS if unit in BASE_UNITS or unit in present)
 
 
 class _XlsSheet:
@@ -386,6 +411,7 @@ def build_report(paths, year, start_month, end_month, progress=None, cancel=None
                                     if dt.year != year or not start_month <= dt.month <= end_month:
                                         source.outside += 1
                                         continue
+                                    unit = merge_department(unit, dt)
                                     if not any(clean_text(value(k)) for k in ("code", "quantity", "tariff", "name")):
                                         source.empty_services += 1
                                         continue
@@ -543,11 +569,28 @@ _XL_MUTED = "65758A"
 _XL_RULE = "D6DFE9"
 _XL_LIGHT = "F2F5F9"
 _XL_BLUE = "244769"
-_XL_GROUP_COLORS = ("30688D", "39776F", "69618B", "917344")
-_XL_GROUP_LIGHT = ("EDF4FA", "EDF6F3", "F2F0F8", "F8F4EC")
+_XL_UNIT_COLORS = {
+    "ЦЖЗ на Лобненской": ("30688D", "EDF4FA"),
+    "ЦЖЗ на Петрозаводской": ("39776F", "EDF6F3"),
+    "ЦЖЗ на Планетной": ("69618B", "F2F0F8"),
+    "ЖК №10": ("88703F", "F8F4E8"),
+    "ЖК №1": ("5262A0", "EEF0FB"),
+    "ЖК №3": ("557A3A", "F0F6E8"),
+    "ЖК №5": ("9A456D", "FAEDF4"),
+    "ЖК №6": ("A3532D", "FBF0E7"),
+    "ЖК №7": ("44798C", "EAF6F8"),
+    "ЖК №11": ("7B594B", "F5EEEA"),
+    "ЖК №13": ("526775", "EEF2F5"),
+    "ЖК №13Н": ("8D4D48", "F9EDEC"),
+}
 _XL_MONEY = '#,##0.00;[Red](#,##0.00);0.00'
 _XL_COUNT = '#,##0;[Red](#,##0);0'
 _XL_PCT = '+0.0%;[Red]-0.0%;0.0%'
+
+
+def _xl_unit_palette(unit):
+    """A clinic keeps the same colour even when other clinics are absent."""
+    return _XL_UNIT_COLORS.get(unit, (_XL_BLUE, _XL_LIGHT))
 
 
 def _xl_num(value):
@@ -599,14 +642,23 @@ def _xl_base(ws, widths, title, last_col):
 
 
 def _xl_note(ws, row, text, last_col, height=30, warning=False):
+    import textwrap
     from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=last_col)
     c = _xl_cell(ws, row, 1, text)
     c.font = Font(name="Arial", size=10, color="8A5B16" if warning else _XL_MUTED)
     c.alignment = Alignment(vertical="center", wrap_text=True)
     if warning:
         c.fill = PatternFill("solid", fgColor="FFF3D9")
-    ws.row_dimensions[row].height = height
+    # Excel does not auto-fit merged cells. Estimate wrapped lines explicitly,
+    # especially for a one-month report with only four columns.
+    width = sum(ws.column_dimensions[get_column_letter(col)].width
+                for col in range(1, last_col + 1))
+    chars_per_line = max(24, int(width))
+    line_count = sum(max(1, len(textwrap.wrap(line, width=chars_per_line)))
+                     for line in str(text).split("\n"))
+    ws.row_dimensions[row].height = max(height, 10 + 14 * line_count)
 
 
 def _xl_header(ws, row, names, start_col=1, color=_XL_BLUE, height=34):
@@ -674,18 +726,20 @@ def _xl_chart(ws, data_col, first_row, last_row, anchor, title, unit, color, lin
 def make_workbook(report):
     """Return a styled snapshot. Input files and patient data are not copied."""
     from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.formatting.rule import CellIsRule
     from openpyxl.workbook.properties import CalcProperties
+    from openpyxl.utils import get_column_letter
     book = Workbook()
     book.properties.title = f"Сводный отчёт ЖК за {report.year} год"
     book.properties.subject = "Количество и стоимость услуг по месяцам и подразделениям"
     book.properties.creator = "Сводный отчёт ЖК"
     book.calculation = CalcProperties(calcId=191029, fullCalcOnLoad=True)
     months = list(report.months)
+    units = tuple(report.units)
     zero = Decimal("0")
-    month_quantity = {m: sum((report.groups[(m, u)].quantity for u in UNITS if (m, u) in report.groups), zero) for m in months}
-    month_money = {m: sum((report.groups[(m, u)].money for u in UNITS if (m, u) in report.groups), zero) for m in months}
+    month_quantity = {m: sum((report.groups[(m, u)].quantity for u in units if (m, u) in report.groups), zero) for m in months}
+    month_money = {m: sum((report.groups[(m, u)].money for u in units if (m, u) in report.groups), zero) for m in months}
     quantity_total = sum(month_quantity.values(), zero)
     money_total = sum(month_money.values(), zero)
     restored_rows = sum(t.restored_rows for (m, _), t in report.groups.items() if m in months)
@@ -694,66 +748,98 @@ def make_workbook(report):
 
     ws = book.active
     ws.title = "Итоги"
-    _xl_base(ws, (16, 12, 19, 12, 19, 12, 19, 12, 19, 13, 21, 25), "Услуги женских консультаций", 12)
-    _xl_note(ws, 4, period + ". Количество — сумма «Кол-во»; стоимость — сумма колонки «Тариф» (уже за всё количество), руб.", 12, 25)
-    _xl_header(ws, 6, ("Месяц", "", "", "", "", "", "", "", "", "Всего", "", "Данные месяца"), height=28)
-    _xl_header(ws, 7, ("", "Услуги, ед.", "Сумма, руб.", "Услуги, ед.", "Сумма, руб.", "Услуги, ед.", "Сумма, руб.", "Услуги, ед.", "Сумма, руб.", "Услуги, ед.", "Сумма, руб.", ""), height=27)
-    for col in (1, 12):
-        ws.merge_cells(start_row=6, start_column=col, end_row=7, end_column=col)
-    ws.merge_cells("J6:K6")
-    for i, unit in enumerate(UNITS):
-        first = 2 + 2 * i
-        ws.merge_cells(start_row=6, start_column=first, end_row=6, end_column=first + 1)
-        c = _xl_cell(ws, 6, first, unit)
+    total_col = 3 + len(months)
+    last_letter = get_column_letter(total_col)
+    widths = (34, 20) + (19,) * len(months) + (22,)
+    _xl_base(ws, widths, "Услуги женских консультаций", total_col)
+    _xl_note(ws, 4, period + ". Количество — сумма «Кол-во»; стоимость — сумма колонки «Тариф» (уже за всё количество), руб.", total_col, 25)
+    _xl_header(ws, 6, ("ЖК", "Показатель") + tuple(MONTHS[m] for m in months) + ("Итого",), height=32)
+    for i, unit in enumerate(units):
+        quantity_row = 7 + 2 * i
+        money_row = quantity_row + 1
+        dark, light = _xl_unit_palette(unit)
+        for row, label, attribute, fmt in (
+                (quantity_row, "Услуги, ед.", "quantity", _XL_COUNT),
+                (money_row, "Сумма, руб.", "money", _XL_MONEY)):
+            _xl_cell(ws, row, 2, label)
+            for col, month in enumerate(months, 3):
+                totals = report.groups.get((month, unit))
+                value = getattr(totals, attribute) if totals else zero
+                _xl_cell(ws, row, col, _xl_num(value) if month in report.loaded_months else None, fmt)
+            unit_total = sum((getattr(report.groups[(m, unit)], attribute)
+                              for m in months if (m, unit) in report.groups), zero)
+            _xl_cell(ws, row, total_col, _xl_num(unit_total), fmt)
+            ws.row_dimensions[row].height = 26
+            for col in range(2, total_col + 1):
+                c = ws.cell(row, col)
+                c.fill = PatternFill("solid", fgColor=light)
+                if col == total_col:
+                    c.font = Font(name="Arial", size=10, bold=True, color=dark)
+                if row == money_row:
+                    c.border = Border(bottom=Side(style="thin", color="FFFFFF"))
+        _xl_cell(ws, quantity_row, 1, unit)
+        ws.merge_cells(start_row=quantity_row, start_column=1, end_row=money_row, end_column=1)
+        for row in (quantity_row, money_row):
+            ws.cell(row, 1).fill = PatternFill("solid", fgColor=dark)
+        c = ws.cell(quantity_row, 1)
         c.font = Font(name="Arial", size=10, bold=True, color="FFFFFF")
-        c.alignment = Alignment(horizontal="center", vertical="center")
-        for row in (6, 7):
-            for col in (first, first + 1):
-                ws.cell(row, col).fill = PatternFill("solid", fgColor=_XL_GROUP_COLORS[i])
-    for row, month in enumerate(months, 8):
+        c.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True, indent=1)
+        ws.cell(money_row, 1).border = Border(bottom=Side(style="thin", color="FFFFFF"))
+
+    total_quantity_row = 7 + 2 * len(units)
+    total_money_row = total_quantity_row + 1
+    for row, label, values, total, fmt in (
+            (total_quantity_row, "Услуги, ед.", month_quantity, quantity_total, _XL_COUNT),
+            (total_money_row, "Сумма, руб.", month_money, money_total, _XL_MONEY)):
+        _xl_cell(ws, row, 2, label)
+        for col, month in enumerate(months, 3):
+            _xl_cell(ws, row, col, _xl_num(values[month]) if month in report.loaded_months else None, fmt)
+        _xl_cell(ws, row, total_col, _xl_num(total), fmt)
+        _xl_total_style(ws, row, 1, total_col)
+    _xl_cell(ws, total_quantity_row, 1, "Всего")
+    ws.merge_cells(start_row=total_quantity_row, start_column=1, end_row=total_money_row, end_column=1)
+    c = ws.cell(total_quantity_row, 1)
+    c.font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+    c.alignment = Alignment(vertical="center", indent=1)
+    for row in (total_quantity_row, total_money_row):
+        ws.cell(row, 1).fill = PatternFill("solid", fgColor=_XL_BLUE)
+
+    coverage_row = total_money_row + 2
+    ws.merge_cells(start_row=coverage_row, start_column=1, end_row=coverage_row, end_column=2)
+    c = _xl_cell(ws, coverage_row, 1, "Данные месяца")
+    c.font = Font(name="Arial", size=10, bold=True, color=_XL_MUTED)
+    c.alignment = Alignment(vertical="center", indent=1)
+    for col in (1, 2):
+        ws.cell(coverage_row, col).fill = PatternFill("solid", fgColor=_XL_LIGHT)
+    for col, month in enumerate(months, 3):
         present = month in report.loaded_months
-        _xl_cell(ws, row, 1, MONTHS[month])
-        ws.row_dimensions[row].height = 34
-        for i, unit in enumerate(UNITS):
-            totals = report.groups.get((month, unit))
-            for col, value, fmt in ((2 + i * 2, totals.quantity if totals else zero, _XL_COUNT),
-                                    (3 + i * 2, totals.money if totals else zero, _XL_MONEY)):
-                c = _xl_cell(ws, row, col, _xl_num(value) if present else None, fmt)
-                c.fill = PatternFill("solid", fgColor=_XL_GROUP_LIGHT[i] if present else "F4F5F7")
-        _xl_cell(ws, row, 10, _xl_num(month_quantity[month]) if present else None, _XL_COUNT)
-        _xl_cell(ws, row, 11, _xl_num(month_money[month]) if present else None, _XL_MONEY)
         dates = sorted(getattr(report, "month_dates", {}).get(month, ()))
         if dates:
             status = f"{dates[0]:%d.%m}–{dates[-1]:%d.%m}\nДней с услугами: {len(dates)}"
         else:
             status = "Есть строки" if present else "Нет данных"
-        c = _xl_cell(ws, row, 12, status)
-        c.alignment = Alignment(vertical="center", wrap_text=True)
+        c = _xl_cell(ws, coverage_row, col, status)
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         c.font = Font(name="Arial", size=10, color=_XL_MUTED if present else "996015")
-        if not present:
-            c.fill = PatternFill("solid", fgColor="FFF3D9")
-        for col in (10, 11):
-            ws.cell(row, col).font = Font(name="Arial", size=10, bold=True, color=_XL_INK)
-    last_row = 7 + len(months)
-    total_row = last_row + 1
-    _xl_cell(ws, total_row, 1, "Итого")
-    for i, unit in enumerate(UNITS):
-        totals = [report.groups[(m, unit)] for m in months if (m, unit) in report.groups]
-        _xl_cell(ws, total_row, 2 + 2 * i, _xl_num(sum((t.quantity for t in totals), zero)), _XL_COUNT)
-        _xl_cell(ws, total_row, 3 + 2 * i, _xl_num(sum((t.money for t in totals), zero)), _XL_MONEY)
-    _xl_cell(ws, total_row, 10, _xl_num(quantity_total), _XL_COUNT)
-    _xl_cell(ws, total_row, 11, _xl_num(money_total), _XL_MONEY)
-    _xl_cell(ws, total_row, 12, f"Месяцев с данными: {len(set(months) & report.loaded_months)}")
-    _xl_total_style(ws, total_row, 1, 12)
-    _xl_note(ws, total_row + 2, "«Нет данных» — в выбранных файлах нет учтённых услуг за месяц. Ноль у отдельного подразделения означает отсутствие его строк в загруженных данных. Итоги включают только загруженные строки.", 12, 32)
-    _xl_note(ws, total_row + 3, "Даты и число дней с услугами показывают фактическое покрытие выгрузки и не подтверждают её полноту за месяц. При разных периодах покрытия динамику следует сравнивать с учётом этого ограничения.", 12, 32)
-    _xl_note(ws, total_row + 4, "Объединение с января: ЖК №3, 5, 6, 7 → ЦЖЗ на Планетной; ЖК №13 и №13Н → ЦЖЗ на Петрозаводской. Месяц определяется по дате услуги, а не по имени файла.", 12, 32)
+        c.fill = PatternFill("solid", fgColor=_XL_LIGHT if present else "FFF3D9")
+    loaded_count = len(set(months) & report.loaded_months)
+    c = _xl_cell(ws, coverage_row, total_col, f"Месяцев с данными:\n{loaded_count} из {len(months)}")
+    c.font = Font(name="Arial", size=10, color=_XL_MUTED)
+    c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    c.fill = PatternFill("solid", fgColor=_XL_LIGHT)
+    ws.row_dimensions[coverage_row].height = 42
+
+    _xl_note(ws, coverage_row + 2, "«Нет данных» — в выбранных файлах нет учтённых услуг за месяц. Ноль у отдельного подразделения означает отсутствие его строк в загруженных данных. Итоги включают только загруженные строки.", total_col, 32)
+    _xl_note(ws, coverage_row + 3, "Даты и число дней с услугами показывают фактическое покрытие выгрузки и не подтверждают её полноту за месяц. При разных периодах покрытия динамику следует сравнивать с учётом этого ограничения.", total_col, 32)
+    _xl_note(ws, coverage_row + 4, MERGER_NOTE + " Месяц определяется по дате услуги, а не по имени файла.", total_col, 32)
     amount_text = f"{restored_money:,.2f}".replace(",", " ").replace(".", ",")
-    _xl_note(ws, total_row + 5, f"Восстановлено пустых и нулевых тарифов: {restored_rows}. Стоимость строк с подстановкой: {amount_text} руб. Она уже включена в общую сумму." + (" Подробности — на листе «Тарифы»." if report.restorations else ""), 12, 30, bool(restored_rows))
-    ws.freeze_panes = "B8"
-    ws.print_title_rows = "1:7"
-    ws.print_area = f"A1:L{total_row + 5}"
-    ws.page_setup.fitToHeight = 1
+    _xl_note(ws, coverage_row + 5, f"Восстановлено пустых и нулевых тарифов: {restored_rows}. Стоимость строк с подстановкой: {amount_text} руб. Она уже включена в общую сумму." + (" Подробности — на листе «Тарифы»." if report.restorations else ""), total_col, 30, bool(restored_rows))
+    ws.freeze_panes = "C7"
+    ws.print_title_rows = "1:6"
+    ws.print_title_cols = "A:B"
+    ws.print_area = f"A1:{last_letter}{coverage_row + 5}"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
 
     analytics = book.create_sheet("Аналитика")
     _xl_base(analytics, (16, 14, 20, 18, 17, 17, 3, 30, 14, 20, 13), "Динамика услуг и структура суммы", 11)
@@ -783,19 +869,25 @@ def make_workbook(report):
         _xl_cell(analytics, analytics_total, col, value, fmt)
     _xl_total_style(analytics, analytics_total, 1, 6)
     _xl_header(analytics, 6, ("Подразделение", "Услуги, ед.", "Сумма, руб.", "Доля суммы"), 8)
-    for row, unit in enumerate(UNITS, 7):
+    for row, unit in enumerate(units, 7):
         totals = [report.groups[(m, unit)] for m in months if (m, unit) in report.groups]
         q = sum((t.quantity for t in totals), zero)
         money = sum((t.money for t in totals), zero)
+        dark, light = _xl_unit_palette(unit)
         for col, value, fmt in ((8, unit, None), (9, _xl_num(q), _XL_COUNT), (10, _xl_num(money), _XL_MONEY),
                                 (11, _xl_num(money / money_total) if money_total else None, "0.0%")):
             c = _xl_cell(analytics, row, col, value, fmt)
-            c.fill = PatternFill("solid", fgColor=_XL_GROUP_LIGHT[row - 7])
+            c.fill = PatternFill("solid", fgColor=dark if col == 8 else light)
+            if col == 8:
+                c.font = Font(name="Arial", size=10, bold=True, color="FFFFFF")
+                c.alignment = Alignment(vertical="center", wrap_text=True)
+        analytics.row_dimensions[row].height = 25
+    units_total_row = 7 + len(units)
     for col, value, fmt in ((8, "Итого", None), (9, _xl_num(quantity_total), _XL_COUNT),
                             (10, _xl_num(money_total), _XL_MONEY), (11, 1 if money_total else None, "0.0%")):
-        _xl_cell(analytics, 11, col, value, fmt)
-    _xl_total_style(analytics, 11, 8, 11)
-    note_row = max(analytics_total + 2, 14)
+        _xl_cell(analytics, units_total_row, col, value, fmt)
+    _xl_total_style(analytics, units_total_row, 8, 11)
+    note_row = max(analytics_total, units_total_row) + 2
     _xl_note(analytics, note_row, "Изменение к предыдущему месяцу показано только при наличии двух соседних месяцев и ненулевой базы. Пустая ячейка означает, что показатель не рассчитан. «На услугу» = общая сумма ÷ количество услуг.", 11, 32)
     _xl_note(analytics, note_row + 1, "Графики отражают объём выгрузок. Пропущенные месяцы не считаются нулевыми; наличие строк не означает полноту месяца. Все показатели включают строки с восстановленными тарифами.", 11, 32)
     chart_row = note_row + 3
@@ -978,7 +1070,7 @@ def launch_monthly(parent=None):
     ttk.Label(file_buttons, textvariable=count_var, style="Monthly.Muted.TLabel").grid(row=0, column=3, sticky="e")
 
     info_var = tk.StringVar(master=window, value=(
-        "ЖК 3, 5, 6, 7 → Планетная. ЖК 13 и 13Н → Петрозаводская.\n"
+        MERGER_NOTE + "\n"
         "«Тариф» — сумма строки. Пустые и нулевые значения восстанавливаются по ненулевой цене за 1 услугу в том же месяце."
     ))
     info_label = ttk.Label(root_frame, textvariable=info_var, style="Monthly.Muted.TLabel", justify="left", wraplength=960)
