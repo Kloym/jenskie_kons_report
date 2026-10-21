@@ -199,17 +199,22 @@ def parse_date(value: object, *, epoch: datetime | None = None) -> date:
         return value
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         try:
-            converted = from_excel(value, epoch=epoch)
-            return converted.date() if isinstance(converted, datetime) else converted
+            converted = from_excel(value, epoch=epoch or datetime(1899, 12, 30))
+            if isinstance(converted, datetime):
+                return converted.date()
+            if isinstance(converted, date):
+                return converted
+            raise ValueError("значение содержит только время, без даты")
         except (TypeError, ValueError, OverflowError) as exc:
             raise ValueError(f"некорректная дата {value!r}") from exc
 
     text = clean_text(value)
     for fmt in DATE_FORMATS:
-        try:
-            return datetime.strptime(text, fmt).date()
-        except ValueError:
-            continue
+        for suffix in ("", " %H:%M", " %H:%M:%S", " %H:%M:%S.%f", "T%H:%M:%S"):
+            try:
+                return datetime.strptime(text, fmt + suffix).date()
+            except ValueError:
+                continue
     raise ValueError(f"не удалось распознать дату {text!r}")
 
 
@@ -272,6 +277,10 @@ def service_code_from_cell(cell: object) -> str:
 class HeaderResolver:
     """Находит нужные столбцы даже при небольших различиях в заголовках."""
 
+    COLUMNS_TYPE = ColumnMap
+    HEADER_TYPE = HeaderInfo
+    OPTIONAL_FIELDS: frozenset[str] = frozenset()
+
     ALIASES: Mapping[str, set[str]] = {
         "service_date": {
             "дата",
@@ -331,16 +340,16 @@ class HeaderResolver:
             if len(mapping) > len(best_mapping):
                 best_row = int(getattr(row[0], "row", 0) or 0)
                 best_mapping = mapping
-            if len(mapping) == len(self.ALIASES):
-                return HeaderInfo(
+            if (set(self.ALIASES) - self.OPTIONAL_FIELDS).issubset(mapping):
+                return self.HEADER_TYPE(
                     row_number=int(getattr(row[0], "row", 0)),
-                    columns=ColumnMap(**mapping),
+                    columns=self.COLUMNS_TYPE(**mapping),
                 )
 
         missing = [
             self.RUSSIAN_NAMES[key]
             for key in self.ALIASES
-            if key not in best_mapping
+            if key not in best_mapping and key not in self.OPTIONAL_FIELDS
         ]
         found = ", ".join(self.RUSSIAN_NAMES[key] for key in best_mapping) or "нет"
         raise ReportError(
@@ -593,6 +602,223 @@ class SourceReader:
         raise ReportError(
             "Ни на одном листе не найдена подходящая таблица.\n" + detail
         )
+
+
+@dataclass(frozen=True)
+class DayHospitalColumns:
+    patient_name: int
+    policy: int
+    service_date: int
+    service_code: int
+    tariff: int
+    doctor: int
+    department: int
+    service_name: int | None = None
+
+
+@dataclass(frozen=True)
+class DayHospitalHeader:
+    row_number: int
+    columns: DayHospitalColumns
+
+
+@dataclass
+class DayHospitalStats:
+    source_rows: int = 0
+    rows_in_period: int = 0
+    accepted_rows: int = 0
+    duplicate_rows: int = 0
+    without_discharge_date: int = 0
+    amount: Decimal = Decimal("0")
+    duplicate_examples: list[str] = field(default_factory=list)
+
+
+class DayHospitalHeaderResolver(HeaderResolver):
+    COLUMNS_TYPE = DayHospitalColumns
+    HEADER_TYPE = DayHospitalHeader
+    OPTIONAL_FIELDS = frozenset({"service_name"})
+    ALIASES = {
+        "patient_name": {"фио", "ф и о", "фио пациента", "пациент"},
+        "policy": {"полис", "полис омс", "номер полиса", "номер полиса омс", "полис пациента"},
+        "service_date": {"дата выбытия", "дата выписки", "дата и время выбытия"},
+        "service_code": {"мэс код", "код мэс", "мэс"},
+        "tariff": {"тарифная стоимость", "тарифная стоимость руб"},
+        "doctor": {"врач", "фио врача", "лечащий врач"},
+        "department": {"отделение", "подразделение"},
+        "service_name": {"мэс название", "название мэс", "наименование мэс"},
+    }
+    RUSSIAN_NAMES = {
+        "patient_name": "ФИО", "policy": "Полис",
+        "service_date": "Дата выбытия", "service_code": "МЭС. Код",
+        "tariff": "Тарифная стоимость", "doctor": "Врач",
+        "department": "Отделение", "service_name": "МЭС. Название",
+    }
+
+
+DAY_HOSPITAL_TARGETS = {
+    "1-1": "Женская консультация «Центр женского здоровья на Лобненской»",
+    "2-1": "Женская консультация «Центр женского здоровья на Петрозаводской»",
+}
+
+
+def day_hospital_unit(value: object) -> str | None:
+    text = clean_text(value).casefold()
+    text = re.sub(r"[‐‑‒–—−]", "-", text)
+    match = re.fullmatch(
+        r"дневной\s+стационар\s*(?:№|n|номер)?\s*([12])\s*-\s*1\s*", text
+    )
+    return f"{match.group(1)}-1" if match else None
+
+
+class DayHospitalReader(SourceReader):
+    """Читает отдельную выгрузку; проверяет повторы только внутри стационара."""
+
+    def __init__(self, config: AppConfig) -> None:
+        self.config = config
+        self.header_resolver = DayHospitalHeaderResolver(config)
+
+    def aggregate(
+        self, source_path: Path, date_from: date, date_to: date,
+        *, sheet_name: str | None = None,
+    ) -> tuple[list[DepartmentData], DayHospitalStats, str]:
+        try:
+            workbook = (
+                XlsWorkbookAdapter(source_path)
+                if source_path.suffix.lower() == ".xls"
+                else load_workbook(source_path, read_only=True, data_only=True, keep_links=False)
+            )
+        except Exception as exc:
+            raise ReportError(f"Не удалось открыть файл дневного стационара: {exc}") from exc
+
+        stats = DayHospitalStats()
+        departments: dict[str, DepartmentData] = {}
+        # Дата в ключе позволяет считать пациента повторно в другой день периода.
+        seen: dict[tuple[date, str, str], tuple[tuple, int]] = {}
+        try:
+            worksheet, header = self._select_worksheet(workbook, sheet_name)
+            columns = header.columns
+            for row_number, row in enumerate(
+                worksheet.iter_rows(min_row=header.row_number + 1), header.row_number + 1
+            ):
+                if not any(clean_text(cell.value) for cell in row):
+                    continue
+                stats.source_rows += 1
+                location = f"{source_path.name}, лист «{worksheet.title}», строка {row_number}"
+                unit = day_hospital_unit(row[columns.department].value)
+                if unit is None:
+                    continue
+
+                date_value = row[columns.service_date].value
+                if not clean_text(date_value):
+                    stats.without_discharge_date += 1
+                    continue
+                try:
+                    row_date = parse_date(date_value, epoch=workbook.epoch)
+                except (ValueError, TypeError, OverflowError) as exc:
+                    raise ReportError(f"{location}: некорректная «Дата выбытия».") from exc
+                if not date_from <= row_date <= date_to:
+                    continue
+                stats.rows_in_period += 1
+
+                # ФИО и полис используются только для ключа, в отчёт и журнал не выводятся.
+                patient_key = normalize_key(row[columns.patient_name].value)
+                try:
+                    policy_cell = row[columns.policy]
+                    if isinstance(policy_cell.value, bool):
+                        raise ValueError("логическое значение полиса")
+                    policy_key = re.sub(
+                        r"[\s\-]+", "", service_code_from_cell(policy_cell)
+                    ).casefold()
+                except (ValueError, InvalidOperation, OverflowError) as exc:
+                    raise ReportError(f"{location}: некорректный полис.") from exc
+                if not patient_key or not policy_key:
+                    raise ReportError(
+                        f"{location}: не заполнены ФИО или полис. "
+                        "Невозможно проверить повтор; заполните эти поля и повторите отчёт."
+                    )
+                doctor = clean_text(row[columns.doctor].value)
+                try:
+                    code = service_code_from_cell(row[columns.service_code])
+                    amount = to_decimal(row[columns.tariff].value)
+                    if not amount.is_finite():
+                        raise ValueError("нечисловая стоимость")
+                    amount = amount.quantize(MONEY_QUANT, rounding=ROUND_HALF_UP)
+                except (ValueError, TypeError, InvalidOperation, OverflowError) as exc:
+                    raise ReportError(
+                        f"{location}: некорректны «МЭС. Код» или «Тарифная стоимость»."
+                    ) from exc
+                if not code or not doctor:
+                    raise ReportError(f"{location}: не заполнены «МЭС. Код» или «Врач».")
+                name = (
+                    clean_text(row[columns.service_name].value)
+                    if columns.service_name is not None else ""
+                ) or f"Дневной стационар, МЭС {code}"
+
+                identity = (row_date, patient_key, policy_key)
+                fingerprint = (unit, code.casefold(), amount, normalize_key(doctor))
+                previous = seen.get(identity)
+                if previous is not None:
+                    previous_fingerprint, previous_row = previous
+                    if previous_fingerprint != fingerprint:
+                        raise ReportError(
+                            f"{location}: повтор ФИО + полис за {row_date:%d.%m.%Y} "
+                            f"со строкой {previous_row}, но различаются отделение, МЭС, "
+                            "стоимость или врач. Уточните верную запись в файле стационара. "
+                            "Отчёт не создан, чтобы не выбрать сумму случайно."
+                        )
+                    stats.duplicate_rows += 1
+                    if len(stats.duplicate_examples) < self.config.max_warning_examples:
+                        stats.duplicate_examples.append(
+                            f"Строка {row_number} — повтор строки {previous_row} "
+                            f"за {row_date:%d.%m.%Y}"
+                        )
+                    continue
+                seen[identity] = (fingerprint, row_number)
+                bucket = departments.setdefault(
+                    unit, DepartmentData(name=DAY_HOSPITAL_TARGETS[unit])
+                )
+                bucket.add(row_date, doctor, code, name, amount, Decimal("1"))
+                stats.accepted_rows += 1
+                stats.amount += amount
+
+            return list(departments.values()), stats, worksheet.title
+        finally:
+            workbook.close()
+
+
+def merge_day_hospital(
+    departments: list[DepartmentData], additions: Sequence[DepartmentData]
+) -> list[DepartmentData]:
+    """Добавляет стационар к существующим адресным ЖК, сохраняя их названия."""
+    merged = list(departments)
+    for addition in additions:
+        stem = "лобненск" if "лобненск" in normalize_key(addition.name) else "петрозаводск"
+        candidates = [
+            department for department in merged
+            if stem in normalize_key(department.name)
+            and (is_women_consultation(department.name)
+                 or "центр женского здоровья" in normalize_key(department.name)
+                 or "цжз" in normalize_key(department.name).split())
+        ]
+        if len(candidates) > 1:
+            raise ReportError(
+                f"В основной выгрузке несколько вариантов названия ЖК для «{addition.name}». "
+                "Приведите название подразделения к одному варианту, чтобы добавить стационар."
+            )
+        if not candidates:
+            merged.append(addition)
+            continue
+        target = candidates[0]
+        for key, record in addition.records.items():
+            if key in target.records:
+                target.records[key].quantity += record.quantity
+            else:
+                target.records[key] = record
+        for day, quantity in addition.daily_quantity.items():
+            target.daily_quantity[day] = target.daily_quantity.get(day, Decimal("0")) + quantity
+        for day, amount in addition.daily_amount.items():
+            target.daily_amount[day] = target.daily_amount.get(day, Decimal("0")) + amount
+    return sorted(merged, key=lambda item: natural_sort_key(item.name))
 
 
 class OutputDirectoryFactory:
@@ -955,12 +1181,19 @@ class ReportApplication:
     def __init__(self, config: AppConfig | None = None) -> None:
         self.config = config or AppConfig()
         self.reader = SourceReader(self.config)
+        self.day_hospital_reader = DayHospitalReader(self.config)
         self.writer = ReportWorkbookWriter()
 
     def run(self, args: argparse.Namespace) -> list[Path]:
         source_path = Path(args.input).expanduser() if args.input else InteractiveInput.choose_source_file()
         source_path = source_path.resolve()
         self._validate_source(source_path)
+        day_input = getattr(args, "day_hospital", None)
+        day_path = Path(day_input).expanduser().resolve() if day_input else None
+        if day_path is not None:
+            self._validate_source(day_path)
+            if day_path == source_path:
+                raise ReportError("Выберите отдельную выгрузку для дневного стационара.")
 
         if args.date_from or args.date_to:
             if not (args.date_from and args.date_to):
@@ -980,6 +1213,27 @@ class ReportApplication:
             sheet_name=args.sheet,
             include_all_departments=args.all_departments,
         )
+        if day_path is not None:
+            print("Читаю дневной стационар по «Дате выбытия» за тот же период...")
+            additions, day_stats, day_sheet = self.day_hospital_reader.aggregate(
+                day_path, date_from, date_to
+            )
+            departments = merge_day_hospital(departments, additions)
+            print(f"Стационар: {day_path.name}, лист «{day_sheet}».")
+            print(
+                f"Добавлено услуг стационара: {day_stats.accepted_rows}; "
+                f"сумма: {day_stats.amount:,.2f} руб.; "
+                f"повторов исключено: {day_stats.duplicate_rows}."
+            )
+            for example in day_stats.duplicate_examples:
+                print(f"  - {example}")
+            if day_stats.without_discharge_date:
+                print(
+                    "Строк стационара без даты выбытия (не включены в период): "
+                    f"{day_stats.without_discharge_date}."
+                )
+            if not day_stats.accepted_rows:
+                print("Внимание: за выбранный период нет записей стационаров №1-1 и №2-1.")
         if not departments:
             scope = "подразделениям" if args.all_departments else "женским консультациям"
             raise ReportError(
@@ -1025,7 +1279,7 @@ class ReportApplication:
             f"Строк по выбранным подразделениям: "
             f"{stats.rows_in_selected_departments:,}".replace(",", " ")
         )
-        print(f"Строк после объединения: {stats.aggregated_rows:,}".replace(",", " "))
+        print(f"Строк основной таблицы после объединения: {stats.aggregated_rows:,}".replace(",", " "))
         if stats.blank_quantity_rows:
             print(
                 "Внимание: для строк с пустым количеством использовано значение 1: "
@@ -1049,6 +1303,9 @@ def build_argument_parser() -> argparse.ArgumentParser:
         description="Создание отдельных Excel-отчётов по услугам женских консультаций."
     )
     parser.add_argument("--input", help="Путь к исходному .xlsx/.xlsm")
+    parser.add_argument(
+        "--day-hospital", help="Дополнительная выгрузка дневного стационара .xls/.xlsx/.xlsm"
+    )
     parser.add_argument("--date-from", help="Начальная дата, например 30.08.2026")
     parser.add_argument("--date-to", help="Конечная дата, например 01.09.2026")
     parser.add_argument("--output-dir", help="Папка, в которой создать каталог с отчётами")

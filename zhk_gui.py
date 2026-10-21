@@ -24,7 +24,7 @@ except ImportError as exc:
 
 
 APP_TITLE = "Отчёты по услугам женских консультаций"
-WINDOW_SIZE = "820x610"
+WINDOW_SIZE = "820x820"
 SUPPORTED_EXTENSIONS = {".xls", ".xlsx", ".xlsm"}
 
 MONTH_NAMES = (
@@ -235,6 +235,7 @@ class ExcelReportGUI:
 
         today = date.today().strftime("%d.%m.%Y")
         self.source_var = tk.StringVar()
+        self.day_hospital_var = tk.StringVar()
         self.date_from_var = tk.StringVar(value=today)
         self.date_to_var = tk.StringVar(value=today)
         self.output_var = tk.StringVar()
@@ -258,7 +259,7 @@ class ExcelReportGUI:
     def _center_window(self) -> None:
         self.root.update_idletasks()
         width = 820
-        height = 610
+        height = min(820, max(560, self.root.winfo_screenheight() - 100))
         x = max(0, (self.root.winfo_screenwidth() - width) // 2)
         y = max(0, (self.root.winfo_screenheight() - height) // 2)
         self.root.geometry(f"{width}x{height}+{x}+{y}")
@@ -359,8 +360,18 @@ class ExcelReportGUI:
         )
 
     def _build_layout(self) -> None:
-        outer = ttk.Frame(self.root, style="App.TFrame", padding=(22, 18, 22, 14))
-        outer.pack(fill="both", expand=True)
+        # Прокрутка сохраняет доступ к кнопкам и журналу на небольшом экране.
+        container = ttk.Frame(self.root, style="App.TFrame")
+        container.pack(fill="both", expand=True)
+        canvas = tk.Canvas(container, background="#F4F7FB", highlightthickness=0)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        outer = ttk.Frame(canvas, style="App.TFrame", padding=(22, 18, 22, 14))
+        window = canvas.create_window((0, 0), window=outer, anchor="nw")
+        outer.bind("<Configure>", lambda event: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window, width=event.width))
         outer.columnconfigure(0, weight=1)
         outer.rowconfigure(3, weight=1)
 
@@ -395,8 +406,17 @@ class ExcelReportGUI:
         )
         browse_source_button.grid(row=0, column=1, padx=(8, 0))
         ttk.Label(
+            source_row, text="Дневной стационар (необязательно)", style="Field.TLabel"
+        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(12, 5))
+        day_hospital_entry = ttk.Entry(source_row, textvariable=self.day_hospital_var)
+        day_hospital_entry.grid(row=2, column=0, sticky="ew")
+        browse_day_hospital_button = ttk.Button(
+            source_row, text="Выбрать файл…", command=self._choose_day_hospital
+        )
+        browse_day_hospital_button.grid(row=2, column=1, padx=(8, 0))
+        ttk.Label(
             card,
-            text="Поддерживаются .xls, .xlsx и .xlsm",
+            text=".xls, .xlsx и .xlsm. Для отчёта за один день укажите одинаковые даты ниже.",
             style="Hint.TLabel",
         ).grid(row=2, column=0, columnspan=2, sticky="w")
 
@@ -530,6 +550,8 @@ class ExcelReportGUI:
             [
                 source_entry,
                 browse_source_button,
+                day_hospital_entry,
+                browse_day_hospital_button,
                 date_from_entry,
                 date_from_button,
                 date_to_entry,
@@ -593,6 +615,15 @@ class ExcelReportGUI:
         if filename:
             self.source_var.set(filename)
 
+    def _choose_day_hospital(self) -> None:
+        filename = filedialog.askopenfilename(
+            parent=self.root,
+            title="Выберите выгрузку дневного стационара",
+            filetypes=(("Excel-файлы", "*.xls *.xlsx *.xlsm"), ("Все файлы", "*.*")),
+        )
+        if filename:
+            self.day_hospital_var.set(filename)
+
     def _choose_output(self) -> None:
         initial_dir = self.output_var.get().strip()
         if not initial_dir and self.source_var.get().strip():
@@ -605,7 +636,7 @@ class ExcelReportGUI:
         if directory:
             self.output_var.set(directory)
 
-    def _validate_form(self) -> tuple[Path, date, date, Path | None]:
+    def _validate_form(self) -> tuple[Path, date, date, Path | None, Path | None]:
         raw_source = self.source_var.get().strip().strip('"')
         if not raw_source:
             raise ValueError("Выберите исходный Excel-файл.")
@@ -615,6 +646,15 @@ class ExcelReportGUI:
             raise ValueError(f"Файл не найден:\n{source_path}")
         if source_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
             raise ValueError("Поддерживаются файлы .xls, .xlsx и .xlsm.")
+        raw_day = self.day_hospital_var.get().strip().strip('"')
+        day_path = Path(raw_day).expanduser() if raw_day else None
+        if day_path is not None:
+            if not day_path.is_file():
+                raise ValueError(f"Файл дневного стационара не найден:\n{day_path}")
+            if day_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                raise ValueError("Для стационара поддерживаются .xls, .xlsx и .xlsm.")
+            if day_path.resolve() == source_path.resolve():
+                raise ValueError("Для дневного стационара выберите отдельный файл.")
 
         date_from = parse_user_date(self.date_from_var.get())
         date_to = parse_user_date(self.date_to_var.get())
@@ -626,20 +666,21 @@ class ExcelReportGUI:
         if output_dir is not None and output_dir.exists() and not output_dir.is_dir():
             raise ValueError("Путь для результатов должен указывать на папку.")
 
-        return source_path, date_from, date_to, output_dir
+        return source_path, date_from, date_to, output_dir, day_path
 
     def _start_processing(self) -> None:
         if self._running:
             return
 
         try:
-            source_path, date_from, date_to, output_dir = self._validate_form()
+            source_path, date_from, date_to, output_dir, day_path = self._validate_form()
         except ValueError as exc:
             messagebox.showerror("Проверьте данные", str(exc), parent=self.root)
             return
 
         arguments = SimpleNamespace(
             input=str(source_path),
+            day_hospital=str(day_path) if day_path is not None else None,
             date_from=date_from.strftime("%d.%m.%Y"),
             date_to=date_to.strftime("%d.%m.%Y"),
             output_dir=str(output_dir) if output_dir is not None else None,
