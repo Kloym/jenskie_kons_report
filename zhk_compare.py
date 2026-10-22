@@ -161,6 +161,10 @@ class PeriodData:
     empty_services: int = 0
     outside: int = 0
     restored_tariffs: Counter = field(default_factory=Counter)
+    day_hospital: PeriodData | None = None
+    hospital_source: str = ""
+    hospital_sheet: str = ""
+    hospital_stats: object | None = None
 
 def collect_tariffs(sheet, header, epoch, start, end):
     """Собирает заполненные тарифы нужных ЖК за выбранный период."""
@@ -220,7 +224,7 @@ def resolve_tariff(raw_tariff, code, tariffs):
     return next(iter(options))
 
 
-def read_period(path, start, end):
+def read_period(path, start, end, day_hospital_path=None):
     path = Path(path)
 
     if path.suffix.lower() not in (".xls", ".xlsx", ".xlsm"):
@@ -400,6 +404,9 @@ def read_period(path, start, end):
                     f"строка {row_no}: {exc}"
                 ) from exc
 
+        if day_hospital_path is not None:
+            attach_day_hospital(data, read_day_hospital(day_hospital_path, start, end))
+
         if not data.dates:
             raise ReportError(
                 f"{path.name}: нет услуг нужных "
@@ -410,6 +417,75 @@ def read_period(path, start, end):
 
     finally:
         book.close()
+
+
+def read_day_hospital(path, start, end):
+    """Использует общие с zhk_report правила дат, суммы и повторов."""
+    try:
+        from zhk_report import DayHospitalReader
+    except ImportError as exc:
+        raise ReportError("Для стационара замените также zhk_report.py из архива обновления.") from exc
+    path = Path(path)
+    if not path.is_file() or path.suffix.lower() not in (".xls", ".xlsx", ".xlsm"):
+        raise ReportError(f"Выберите Excel-файл дневного стационара: {path}")
+    departments, stats, sheet = DayHospitalReader(AppConfig()).aggregate(
+        path, start, end, allow_erzl_fallback=True,
+    )
+    data = PeriodData(hospital_source=path.name, hospital_sheet=sheet, hospital_stats=stats)
+    for department in departments:
+        unit, _ = identify_department(department.name)
+        source = "Дневной стационар №1-1" if unit == UNITS[0] else "Дневной стационар №2-1"
+        for record in department.sorted_records():
+            doctor_name = safe_excel_text(record.doctor)
+            doctor = normalize_key(doctor_name)
+            code = code_key(record.service_code)
+            name = safe_excel_text(record.service_name)
+            for bucket in (
+                data.units[unit], data.services[(unit, code)], data.doctors[(unit, doctor)],
+                data.sources[(unit, source)], data.total, data.code_totals[code],
+            ):
+                bucket.add(doctor, code, name, record.tariff, record.quantity)
+            data.names[code] = name
+            data.doctor_names[doctor] = doctor_name
+        data.dates.update({day: int(qty) for day, qty in department.daily_quantity.items()})
+    return data
+
+
+def merge_bucket(target, addition):
+    target.quantity += addition.quantity
+    target.money += addition.money
+    target.doctors.update(addition.doctors)
+    target.codes.update(addition.codes)
+    target.positions.update(addition.positions)
+
+
+def attach_day_hospital(data, hospital):
+    if data.day_hospital is not None:
+        raise ReportError("Дневной стационар уже включён в этот период.")
+    for field_name in ("units", "services", "doctors", "sources", "code_totals"):
+        target = getattr(data, field_name)
+        for key, bucket in getattr(hospital, field_name).items():
+            merge_bucket(target[key], bucket)
+    merge_bucket(data.total, hospital.total)
+    data.dates.update(hospital.dates)
+    for code, name in hospital.names.items():
+        data.names.setdefault(code, name)
+    data.doctor_names.update(hospital.doctor_names)
+    data.day_hospital = hospital
+
+
+def validate_hospital_files(paths, main_paths):
+    """Оба периода должны иметь одинаковый состав источников."""
+    if bool(paths[0]) != bool(paths[1]):
+        raise ReportError("Выберите оба файла стационара или очистите оба поля стационара.")
+    protected = {Path(p).resolve() for p in main_paths}
+    for path in paths:
+        if path is None:
+            continue
+        if not path.is_file() or path.suffix.lower() not in (".xls", ".xlsx", ".xlsm"):
+            raise ReportError(f"Не найден Excel-файл дневного стационара: {path}")
+        if path.resolve() in protected:
+            raise ReportError("Для стационара нужна отдельная выгрузка, отличная от услуг ЖК и шаблона.")
 
 
 def validate_periods(a, b, c, d):
@@ -731,8 +807,132 @@ class TemplateWriter:
         return self.book
 
 
+def period_header(value, labels):
+    # Одновременная замена: «Сентябрь» из нового первого заголовка
+    # не должен повторно превратиться в «Октябрь».
+    return re.sub(
+        r"август|сентябрь",
+        lambda match: labels[0] if match.group().casefold() == "август" else labels[1],
+        str(value), flags=re.IGNORECASE,
+    )
+
+
+def write_day_hospital_sheet(writer, old, new, labels, period):
+    """Отдельная расшифровка уже включённых в ЖК услуг; не новый общий итог."""
+    old, new = old.day_hospital, new.day_hospital
+    name = "Дневной стационар"
+    ws = writer.book.create_sheet(name, writer.book.sheetnames.index("Планетная") + 1)
+    ws.sheet_view.showGridLines = False
+    ws.sheet_view.zoomScale = 85
+    ws.sheet_properties.tabColor = "1F4E78"
+    ws.freeze_panes = "B6"
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.paperSize = ws.PAPERSIZE_A3
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.print_title_rows = "1:5"
+    widths = (34, 24, 18, 28, 18, 20, 20, 18, 22, 22, 22, 22, 22, 22)
+    for col, width in enumerate(widths, 1):
+        ws.column_dimensions[get_column_letter(col)].width = width
+
+    def title(row, text, size=12):
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=14)
+        cell = ws.cell(row, 1, text)
+        cell.font = Font(name="Calibri", size=size, bold=True, color="1F4E78")
+        cell.alignment = Alignment(vertical="center", wrap_text=True)
+        ws.row_dimensions[row].height = 28 if size < 16 else 34
+
+    title(1, "Дневной стационар: сравнение периодов", 18)
+    title(2, period, 11)
+    title(3, "№1-1 включён в Лобненскую; №2-1 — в Петрозаводскую. Ниже — расшифровка этих сумм.", 11)
+
+    def labels_for(base, prefix):
+        return prefix + [
+            period_header(v, labels)
+            for v in writer.headers[base][len(prefix):]
+        ]
+
+    def write_table(table_name, base, header_row, rows, headers):
+        writer.styles[table_name] = writer.styles[base]
+        end = writer.table(name, table_name, header_row, 1, rows, headers)
+        average0, average1, delta = {
+            "PlanetaGroups14": ("I", "J", "K"),
+            "AllServices14": ("L", "M", "N"),
+            "DoctorComparison14": ("J", "K", "L"),
+        }[base]
+        for row in range(header_row + 1, end + 1):
+            ws[f"{delta}{row}"] = (
+                f'=IF(OR({average0}{row}="",{average1}{row}=""),"",'
+                f'ROUND({average1}{row}-{average0}{row},2))'
+            )
+        return end
+
+    summary = []
+    for row, unit, label in (
+        (6, UNITS[0], "ДС №1-1 (Лобненская)"),
+        (7, UNITS[1], "ДС №2-1 (Петрозаводская)"),
+    ):
+        summary.append(metrics([label], *pair(old.units, new.units, unit), row))
+    total = metrics(["ИТОГО по стационару"], old.total, new.total, 8)
+    for index, col in ((1, "B"), (2, "C"), (5, "F"), (6, "G")):
+        total[index] = f"=SUM({col}6:{col}7)"
+    summary.append(total)
+    write_table("DayHospitalSummary", "PlanetaGroups14", 5, summary,
+                labels_for("PlanetaGroups14", ["Стационар / ЖК"]))
+    writer.colors(name, ("D", "H", "K"), 6, 8)
+    for cell in ws[8][:11]:
+        cell.font = Font(name="Calibri", size=11, bold=True, color="1F4E78")
+
+    for row, label, data in ((10, labels[0], old), (11, labels[1], new)):
+        stats = data.hospital_stats
+        detail = (
+            f"{label}: {data.hospital_source}; принято {stats.accepted_rows}, "
+            f"повторов исключено {stats.duplicate_rows}; проверка по ЕРЗЛ при пустом полисе: {stats.erzl_rows}."
+        )
+        if stats.erzl_examples:
+            detail += " Строки: " + ", ".join(map(str, stats.erzl_examples)) + "."
+        if stats.without_discharge_date:
+            detail += f" Без даты выбытия: {stats.without_discharge_date} (не включены)."
+        title(row, detail, 10)
+        ws.cell(row, 1).font = Font(name="Calibri", size=10, color="595959")
+
+    title(13, "По кодам МЭС")
+    names = old.names | new.names
+    keys = sorted(set(old.services) | set(new.services), key=lambda k: (UNITS.index(k[0]), k[1]))
+    rows = []
+    for row, (unit, code) in enumerate(keys, 15):
+        station = "№1-1" if unit == UNITS[0] else "№2-1"
+        rows.append(metrics([unit, station, code, names[code]],
+                            *pair(old.services, new.services, (unit, code)), row))
+    end = write_table("DayHospitalMES", "AllServices14", 14, rows,
+                      labels_for("AllServices14", ["ЖК", "Стационар", "Код МЭС", "МЭС. Название"]))
+    writer.colors(name, ("G", "K", "N"), 15, end)
+    for row in range(15, end + 1):
+        ws.cell(row, 3).number_format = "@"
+        ws.row_dimensions[row].height = max(46, 16 * ((len(str(ws.cell(row, 4).value or "")) + 24) // 25))
+
+    doctor_header = end + 4
+    title(doctor_header - 1, "По врачам дневного стационара")
+    doctor_names = old.doctor_names | new.doctor_names
+    keys = sorted(set(old.doctors) | set(new.doctors), key=lambda k: (UNITS.index(k[0]), k[1]))
+    rows = []
+    for row, key in enumerate(keys, doctor_header + 1):
+        unit, doctor = key
+        x, y = pair(old.doctors, new.doctors, key)
+        rows.append(metrics([unit, doctor_names[doctor]], x, y, row) + [len(x.codes), len(y.codes)])
+    end = write_table("DayHospitalDoctors", "DoctorComparison14", doctor_header, rows,
+                      labels_for("DoctorComparison14", ["ЖК", "Врач"]))
+    writer.colors(name, ("E", "I", "L"), doctor_header + 1, end)
+
+
 def build_book(template, old, new, dates):
+    if (old.day_hospital is None) != (new.day_hospital is None):
+        raise ReportError("Для сравнения со стационаром загрузите его выгрузки для обоих периодов.")
     writer = TemplateWriter(template)
+    if old.day_hospital is not None:
+        for code in set(old.day_hospital.names) | set(new.day_hospital.names):
+            writer.groups.setdefault(code, "Дневной стационар")
     a, b, c, d = dates
 
     labels = (
@@ -750,11 +950,7 @@ def build_book(template, old, new, dates):
 
     def headers(name):
         return [
-            str(v)
-            .replace("Август", labels[0])
-            .replace("август", labels[0])
-            .replace("Сентябрь", labels[1])
-            .replace("сентябрь", labels[1])
+            period_header(v, labels)
             for v in writer.headers[name]
         ]
 
@@ -1317,6 +1513,9 @@ def build_book(template, old, new, dates):
 
     ws.freeze_panes = "B6"
 
+    if old.day_hospital is not None:
+        write_day_hospital_sheet(writer, old, new, labels, period)
+
     unknown = sorted(
         set(names) - set(writer.groups)
     )
@@ -1347,6 +1546,11 @@ def build_book(template, old, new, dates):
         f"{sum(old.restored_tariffs.values())} в предыдущем периоде; "
         f"{sum(new.restored_tariffs.values())} в текущем."
     )
+    if old.day_hospital is not None:
+        notes.append(
+            "Дневной стационар включён в общие итоги: №1-1 — Лобненская, №2-1 — Петрозаводская. "
+            "Отдельный лист «Дневной стационар» содержит расшифровку уже учтённых услуг."
+        )
 
     for label, data in zip(labels, (old, new)):
         if data.excluded:
@@ -1437,6 +1641,20 @@ def describe(data, label, unknown=()):
                     in sorted(data.restored_tariffs.items())
                 )
             )
+
+    if data.day_hospital is not None:
+        hospital = data.day_hospital
+        stats = hospital.hospital_stats
+        parts.append(
+            f"В том числе дневной стационар: {hospital.total.quantity} услуг; "
+            f"{hospital.total.money:,.2f} руб. ({hospital.hospital_source}, лист «{hospital.hospital_sheet}»). "
+            f"Повторов исключено: {stats.duplicate_rows}; строк с проверкой по ЕРЗЛ: {stats.erzl_rows}."
+        )
+        if stats.erzl_examples:
+            parts.append("Пустой полис, использован ЕРЗЛ: строки " + ", ".join(map(str, stats.erzl_examples)) + ".")
+        parts.extend(stats.duplicate_examples)
+        if stats.without_discharge_date:
+            parts.append(f"Без даты выбытия, не включены в период: {stats.without_discharge_date}.")
 
     return "\n".join(parts)
 
@@ -1582,6 +1800,8 @@ def launch_compare(parent=None):
     defaults = {
         "previous": "",
         "current": "",
+        "day_previous": "",
+        "day_current": "",
         "template": str(TEMPLATE),
         "from0": previous.replace(day=7).strftime("%d.%m.%Y"),
         "to0": previous.replace(day=20).strftime("%d.%m.%Y"),
@@ -1723,7 +1943,9 @@ def launch_compare(parent=None):
     for row, (key, title) in enumerate(
         (
             ("previous", "Предыдущий месяц"),
+            ("day_previous", "Стационар — предыдущий"),
             ("current", "Текущий месяц"),
+            ("day_current", "Стационар — текущий"),
             ("template", "Шаблон отчёта"),
         ),
         1,
@@ -1763,6 +1985,19 @@ def launch_compare(parent=None):
         browse.grid(row=row, column=2, pady=5)
 
         controls.extend((entry, browse))
+        if key.startswith("day_"):
+            clear = ttk.Button(
+                files, text="Очистить", style="Compare.TButton",
+                command=lambda k=key: values[k].set(""),
+            )
+            clear.grid(row=row, column=3, padx=(6, 0), pady=5)
+            controls.append(clear)
+
+    ttk.Label(
+        files, style="CompareHint.TLabel", wraplength=820,
+        text=("Стационар необязателен: выберите оба файла или оставьте оба поля пустыми. "
+              "Периоды ниже применяются к услугам ЖК и к дате выбытия из стационара."),
+    ).grid(row=6, column=0, columnspan=4, sticky="w", pady=(4, 0))
 
     periods = card(3, "2. Периоды сравнения")
     periods.columnconfigure(0, weight=1, uniform="period")
@@ -1983,7 +2218,7 @@ def launch_compare(parent=None):
         variable=complete,
         style="Compare.TCheckbutton",
         text=(
-            "Обе выгрузки полные за выбранные периоды; "
+            "Все выбранные выгрузки полные за выбранные периоды; "
             "дни без услуг допустимы"
         ),
     )
@@ -2124,8 +2359,14 @@ def launch_compare(parent=None):
                 foreground="#B42318"
             )
 
+        paired_hospital_files = bool(values["day_previous"].get()) == bool(values["day_current"].get())
+        if valid and not paired_hospital_files:
+            hint.set("Выберите оба файла стационара или очистите оба поля стационара.")
+            hint_label.configure(foreground="#B42318")
+
         ready = (
             valid
+            and paired_hospital_files
             and complete.get()
             and all(
                 values[key].get()
@@ -2296,13 +2537,17 @@ def launch_compare(parent=None):
                     "template",
                 )
             ]
+            hospital_paths = [
+                Path(values[key].get().strip()) if values[key].get().strip() else None
+                for key in ("day_previous", "day_current")
+            ]
 
             dates = read_dates()
             validate_periods(*dates)
 
             if not complete.get():
                 raise ReportError(
-                    "Подтвердите полноту обеих выгрузок."
+                    "Подтвердите полноту всех выбранных выгрузок."
                 )
 
             if not all(path.is_file() for path in paths):
@@ -2316,6 +2561,7 @@ def launch_compare(parent=None):
                     "Выбран один и тот же "
                     "исходный файл дважды."
                 )
+            validate_hospital_files(hospital_paths, paths)
 
         except Exception as exc:
             messagebox.showerror(
@@ -2352,11 +2598,13 @@ def launch_compare(parent=None):
                     paths[0],
                     dates[0],
                     dates[1],
+                    day_hospital_path=hospital_paths[0],
                 )
                 new = read_period(
                     paths[1],
                     dates[2],
                     dates[3],
+                    day_hospital_path=hospital_paths[1],
                 )
 
                 book, unknown = build_book(
@@ -2391,7 +2639,7 @@ def launch_compare(parent=None):
                     (
                         stream.getvalue(),
                         report,
-                        paths,
+                        paths + [path for path in hospital_paths if path is not None],
                         dates,
                     ),
                 ))

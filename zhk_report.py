@@ -614,6 +614,7 @@ class DayHospitalColumns:
     doctor: int
     department: int
     service_name: int | None = None
+    erzl: int | None = None
 
 
 @dataclass(frozen=True)
@@ -631,12 +632,14 @@ class DayHospitalStats:
     without_discharge_date: int = 0
     amount: Decimal = Decimal("0")
     duplicate_examples: list[str] = field(default_factory=list)
+    erzl_rows: int = 0
+    erzl_examples: list[int] = field(default_factory=list)
 
 
 class DayHospitalHeaderResolver(HeaderResolver):
     COLUMNS_TYPE = DayHospitalColumns
     HEADER_TYPE = DayHospitalHeader
-    OPTIONAL_FIELDS = frozenset({"service_name"})
+    OPTIONAL_FIELDS = frozenset({"service_name", "erzl"})
     ALIASES = {
         "patient_name": {"фио", "ф и о", "фио пациента", "пациент"},
         "policy": {"полис", "полис омс", "номер полиса", "номер полиса омс", "полис пациента"},
@@ -646,12 +649,14 @@ class DayHospitalHeaderResolver(HeaderResolver):
         "doctor": {"врач", "фио врача", "лечащий врач"},
         "department": {"отделение", "подразделение"},
         "service_name": {"мэс название", "название мэс", "наименование мэс"},
+        "erzl": {"ерзл", "ерзл пациента", "id ерзл", "номер ерзл"},
     }
     RUSSIAN_NAMES = {
         "patient_name": "ФИО", "policy": "Полис",
         "service_date": "Дата выбытия", "service_code": "МЭС. Код",
         "tariff": "Тарифная стоимость", "doctor": "Врач",
         "department": "Отделение", "service_name": "МЭС. Название",
+        "erzl": "ЕРЗЛ пациента",
     }
 
 
@@ -679,24 +684,46 @@ class DayHospitalReader(SourceReader):
 
     def aggregate(
         self, source_path: Path, date_from: date, date_to: date,
-        *, sheet_name: str | None = None,
+        *, sheet_name: str | None = None, allow_erzl_fallback: bool = False,
     ) -> tuple[list[DepartmentData], DayHospitalStats, str]:
+        source_stream = None
         try:
-            workbook = (
-                XlsWorkbookAdapter(source_path)
-                if source_path.suffix.lower() == ".xls"
-                else load_workbook(source_path, read_only=True, data_only=True, keep_links=False)
-            )
+            if source_path.suffix.lower() == ".xls":
+                workbook = XlsWorkbookAdapter(source_path)
+            else:
+                source_stream = source_path.open("rb")
+                workbook = load_workbook(source_stream, read_only=True, data_only=True, keep_links=False)
         except Exception as exc:
+            if source_stream is not None:
+                source_stream.close()
             raise ReportError(f"Не удалось открыть файл дневного стационара: {exc}") from exc
 
         stats = DayHospitalStats()
         departments: dict[str, DepartmentData] = {}
         # Дата в ключе позволяет считать пациента повторно в другой день периода.
-        seen: dict[tuple[date, str, str], tuple[tuple, int]] = {}
+        seen: dict[tuple[date, str, str, str], tuple[tuple, int]] = {}
         try:
             worksheet, header = self._select_worksheet(workbook, sheet_name)
             columns = header.columns
+            policies = {}
+            if allow_erzl_fallback and columns.erzl is not None:
+                # Связываем заполненный полис с ЕРЗЛ до проверки повторов:
+                # результат не зависит от порядка строк в файле.
+                for row in worksheet.iter_rows(min_row=header.row_number + 1):
+                    try:
+                        if day_hospital_unit(row[columns.department].value) is None:
+                            continue
+                        day = parse_date(row[columns.service_date].value, epoch=workbook.epoch)
+                        if not date_from <= day <= date_to:
+                            continue
+                        fio = normalize_key(row[columns.patient_name].value)
+                        erzl = self._identifier(row[columns.erzl])
+                        policy = self._identifier(row[columns.policy])
+                        if fio and erzl and policy:
+                            policies.setdefault((fio, erzl), set()).add(policy)
+                    except (ValueError, TypeError, InvalidOperation, OverflowError):
+                        # Основной проход ниже выдаёт ошибку с номером строки.
+                        continue
             for row_number, row in enumerate(
                 worksheet.iter_rows(min_row=header.row_number + 1), header.row_number + 1
             ):
@@ -723,17 +750,31 @@ class DayHospitalReader(SourceReader):
                 # ФИО и полис используются только для ключа, в отчёт и журнал не выводятся.
                 patient_key = normalize_key(row[columns.patient_name].value)
                 try:
-                    policy_cell = row[columns.policy]
-                    if isinstance(policy_cell.value, bool):
-                        raise ValueError("логическое значение полиса")
-                    policy_key = re.sub(
-                        r"[\s\-]+", "", service_code_from_cell(policy_cell)
-                    ).casefold()
+                    policy_key = self._identifier(row[columns.policy])
                 except (ValueError, InvalidOperation, OverflowError) as exc:
                     raise ReportError(f"{location}: некорректный полис.") from exc
+                identity_kind = "policy"
+                if patient_key and not policy_key and allow_erzl_fallback and columns.erzl is not None:
+                    try:
+                        erzl_key = self._identifier(row[columns.erzl])
+                    except (ValueError, InvalidOperation, OverflowError) as exc:
+                        raise ReportError(f"{location}: некорректный ЕРЗЛ при пустом полисе.") from exc
+                    if erzl_key:
+                        variants = policies.get((patient_key, erzl_key), set())
+                        if len(variants) > 1:
+                            raise ReportError(
+                                f"{location}: для ФИО + ЕРЗЛ найдено несколько полисов. "
+                                "Заполните верный полис в этой строке."
+                            )
+                        identity_kind = "policy" if variants else "erzl"
+                        policy_key = next(iter(variants)) if variants else erzl_key
+                        stats.erzl_rows += 1
+                        if len(stats.erzl_examples) < self.config.max_warning_examples:
+                            stats.erzl_examples.append(row_number)
                 if not patient_key or not policy_key:
                     raise ReportError(
-                        f"{location}: не заполнены ФИО или полис. "
+                        f"{location}: не заполнены ФИО или полис"
+                        + (" (ЕРЗЛ тоже не заполнен). " if allow_erzl_fallback else ". ") +
                         "Невозможно проверить повтор; заполните эти поля и повторите отчёт."
                     )
                 doctor = clean_text(row[columns.doctor].value)
@@ -754,14 +795,14 @@ class DayHospitalReader(SourceReader):
                     if columns.service_name is not None else ""
                 ) or f"Дневной стационар, МЭС {code}"
 
-                identity = (row_date, patient_key, policy_key)
+                identity = (row_date, patient_key, identity_kind, policy_key)
                 fingerprint = (unit, code.casefold(), amount, normalize_key(doctor))
                 previous = seen.get(identity)
                 if previous is not None:
                     previous_fingerprint, previous_row = previous
                     if previous_fingerprint != fingerprint:
                         raise ReportError(
-                            f"{location}: повтор ФИО + полис за {row_date:%d.%m.%Y} "
+                            f"{location}: повтор ФИО + полис/ЕРЗЛ за {row_date:%d.%m.%Y} "
                             f"со строкой {previous_row}, но различаются отделение, МЭС, "
                             "стоимость или врач. Уточните верную запись в файле стационара. "
                             "Отчёт не создан, чтобы не выбрать сумму случайно."
@@ -783,7 +824,17 @@ class DayHospitalReader(SourceReader):
 
             return list(departments.values()), stats, worksheet.title
         finally:
-            workbook.close()
+            try:
+                workbook.close()
+            finally:
+                if source_stream is not None:
+                    source_stream.close()
+
+    @staticmethod
+    def _identifier(cell: object) -> str:
+        if isinstance(cell.value, bool):
+            raise ValueError("логическое значение идентификатора")
+        return re.sub(r"[\s\-]+", "", service_code_from_cell(cell)).casefold()
 
 
 def merge_day_hospital(
