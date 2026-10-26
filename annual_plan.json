@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "asOf": "2026-10-22",
+  "monthPlanTotal": 12085,
+  "departments": [
+    {
+      "name": "ЦЖЗ на Лобненской",
+      "yearPlan": 33992,
+      "previousActual": 18814,
+      "monthPlan": 4397,
+      "monthActual": 1931
+    },
+    {
+      "name": "ЦЖЗ на Петрозаводской",
+      "yearPlan": 23868,
+      "previousActual": 12028,
+      "monthPlan": 3254,
+      "monthActual": 1066
+    },
+    {
+      "name": "ЖК №10",
+      "yearPlan": 2944,
+      "previousActual": 1328,
+      "monthPlan": 514,
+      "monthActual": 247
+    },
+    {
+      "name": "ЦЖЗ на Планетной",
+      "yearPlan": 27313,
+      "previousActual": 13286,
+      "monthPlan": 3921,
+      "monthActual": 1161
+    }
+  ]
+}

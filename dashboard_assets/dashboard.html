@@ -29,7 +29,7 @@
 <main id="main">
 <div class="title-row"><div><div class="period" id="periodLabel"></div><h1>Услуги за месяц</h1><p id="scopeText">Обрабатываем данные отчёта…</p></div><button class="primary" id="exportButton"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5"/></svg>Скачать CSV</button></div>
 <div class="notice" id="coverageNotice" role="status"></div>
-<section class="filter-panel" aria-label="Фильтры отчёта"><div class="filter-topline"><nav class="tabs" role="tablist" aria-label="Группы услуг"><button role="tab" id="targetTab" aria-selected="true" aria-controls="report" data-tab="target">Репродуктивное здоровье <span>001983 · 001984</span></button><button role="tab" id="allTab" aria-selected="false" aria-controls="report" tabindex="-1" data-tab="all">Все услуги <span id="serviceCount"></span></button></nav><button id="resetButton" class="reset"><svg viewBox="0 0 24 24" aria-hidden="true" class=""><path d="M3 11a9 9 0 1 1 2.5 7M3 4v7h7"/></svg>Сбросить всё</button></div><div class="filters"><div class="filter-field department-field" id="departmentField" >
+<section class="filter-panel" aria-label="Фильтры отчёта"><div class="filter-topline"><nav class="tabs" role="tablist" aria-label="Группы услуг"><button role="tab" id="targetTab" aria-selected="true" aria-controls="annualPlan report" data-tab="target">Репродуктивное здоровье <span>001983 · 001984</span></button><button role="tab" id="allTab" aria-selected="false" aria-controls="report" tabindex="-1" data-tab="all">Все услуги <span id="serviceCount"></span></button></nav><button id="resetButton" class="reset"><svg viewBox="0 0 24 24" aria-hidden="true" class=""><path d="M3 11a9 9 0 1 1 2.5 7M3 4v7h7"/></svg>Сбросить всё</button></div><div class="filters"><div class="filter-field department-field" id="departmentField" >
 <label id="departmentCaption" for="departmentTrigger">Подразделение</label>
 <div class="search-picker" id="departmentPicker">
 <input type="hidden" id="department" value="">
@@ -54,6 +54,41 @@
 <div class="picker-search-row"><input id="serviceQuery" type="search" role="combobox" aria-label="Найти по коду или названию" aria-controls="serviceList" aria-expanded="true" aria-autocomplete="list" placeholder="Найти по коду или названию" autocomplete="off"><button type="button" id="serviceClose" class="picker-close" aria-label="Закрыть список: услуга">×</button></div>
 <ul class="picker-list" id="serviceList" role="listbox" aria-label="Услуга"></ul><p class="picker-status" id="serviceStatus" role="status"></p>
 </div></div></div></div><div class="filter-summary"><span id="filterHint">Весь период · все врачи</span><div id="activeFilters" aria-label="Выбранные фильтры"></div></div></section>
+<section id="annualPlan" class="annual-plan" aria-labelledby="annualTitle" hidden>
+  <div class="annual-heading">
+    <div class="annual-identity"><h2 id="annualTitle">Годовой план ДОРЗ</h2><p><span id="annualStamp"></span><span class="annual-dot" aria-hidden="true">·</span><span id="annualSummary"></span></p></div>
+    <div class="annual-head-rate"><strong id="annualHeadlineRate"></strong><span>к плану на дату</span></div>
+    <button id="annualToggle" class="annual-toggle" aria-expanded="false" aria-controls="annualBody"><span id="annualToggleLabel">Раскрыть план</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+  </div>
+  <div id="annualBody" class="annual-body" hidden>
+    <div class="annual-layout">
+      <div class="annual-main">
+        <div class="annual-scope-line"><h3 id="annualScope">Всё учреждение</h3><button id="annualReset" class="annual-back" hidden>Всё учреждение ↗</button></div>
+        <div class="annual-volume"><strong id="annualActual"></strong><span>из <b id="annualYearPlan"></b><small>женщин по годовому плану</small></span></div>
+        <div class="annual-change"><span id="annualTrend"></span><span id="annualTrendPeriod"></span></div>
+        <div class="annual-ruler" id="annualRuler" role="img" aria-label="Выполнение годового плана">
+          <div class="annual-track"><div id="annualFactFill" class="annual-fill"></div><div id="annualPriorFill" class="annual-fill annual-fill-prior"></div></div>
+          <div class="annual-ruler-grid" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+          <div id="annualTargetMark" class="annual-mark annual-target-mark" aria-hidden="true"><i></i></div>
+          <div id="annualFactMark" class="annual-mark annual-fact-mark" aria-hidden="true"><i></i></div>
+          <div class="annual-axis" aria-hidden="true"><span>0</span><span>25</span><span>50</span><span>75</span><span>100%</span></div>
+        </div>
+        <div class="annual-ruler-key"><div><span class="annual-key-dot"></span>Доля плана года <strong id="annualShare"></strong></div><div><span class="annual-key-target"></span>План на дату <strong id="annualExpectedShare"></strong></div></div>
+        <div class="annual-volume-key" aria-hidden="true"><span><i></i><span id="annualPriorVolume"></span></span><span><i></i><span id="annualMonthVolume"></span></span></div>
+        <p id="annualGap" class="annual-gap"></p>
+        <div class="annual-month">
+          <div><span id="annualMonthTitle"></span><strong id="annualMonthActual"></strong><small id="annualMonthPlan"></small></div>
+          <div class="annual-month-rate"><strong id="annualMonthRate"></strong><span>к плану месяца на дату</span></div>
+        </div>
+      </div>
+      <div class="annual-comparison"><div class="annual-comparison-head"><h3>Консультации</h3><span>К плану на дату</span></div><div id="annualUnits" class="annual-units" role="group" aria-label="Выбрать подразделение в годовом плане"></div><p class="annual-unit-hint">Нажмите на консультацию, чтобы рассмотреть её годовой план.</p></div>
+    </div>
+    <p class="annual-context" id="annualContext"></p>
+    <details class="annual-source"><summary>Исходные показатели и расчёт</summary><p id="annualBasis"></p><div class="annual-source-scroll" tabindex="0" aria-label="Исходные показатели годового плана"><table id="annualSourceTable"></table></div><p id="annualWarnings" class="annual-source-note"></p></details>
+    <p id="annualAnnouncement" class="sr-only" role="status" aria-live="polite"></p>
+  </div>
+</section>
+
 <div id="filterError" class="error" hidden role="alert"></div>
 <div id="report" role="tabpanel" aria-labelledby="targetTab">
 <div class="overview-grid"><div class="kpis" aria-live="polite">

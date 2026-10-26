@@ -240,10 +240,15 @@ def write_dashboard(data, output, *, overwrite=False, source=None):
     template = (BASE / "dashboard_assets" / "dashboard.html").read_text(encoding="utf-8")
     css = (BASE / "dashboard_assets" / "dashboard.css").read_text(encoding="utf-8")
     js = (BASE / "dashboard_assets" / "dashboard.js").read_text(encoding="utf-8")
+    anime = (BASE / "dashboard_assets" / "vendor" / "anime-4.5.0.umd.min.js").read_text(encoding="utf-8")
+    anime_license = (BASE / "dashboard_assets" / "vendor" / "LICENSE-anime.md").read_text(encoding="utf-8")
+    anime = "/*\n" + anime_license + "\n*/\n" + anime
     # Single pass: source values containing template tokens remain literal.
     import re
-    values = {"STYLE": css, "SCRIPT": js, "DATA": payload}
-    html = re.sub(r"\{\{(STYLE|SCRIPT|DATA)\}\}", lambda m: values[m[1]], template)
+    values = {"/* {{STYLE}} */": css, "{{STYLE}}": css, "{{SCRIPT}}": js,
+              "{{ANIME}}": anime, "{{DATA}}": payload}
+    pattern = "|".join(re.escape(token) for token in values)
+    html = re.sub(pattern, lambda match: values[match[0]], template)
     output.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=".dashboard-", suffix=".tmp", dir=output.parent)
     try:
