@@ -349,6 +349,19 @@ dialog{border-radius:24px;box-shadow:var(--float-shadow);padding:26px}dialog::ba
 @media(max-width:640px){.annual-plan{border-radius:20px;margin-bottom:18px}.annual-heading{padding:19px 16px 15px;gap:13px}.annual-heading h2{font-size:16px}.annual-heading p{font-size:11px}.annual-head-rate strong{font-size:25px}.annual-head-rate span{font-size:11px}.annual-toggle{min-height:44px;width:100%;justify-content:center}.annual-body{padding:0 16px 16px}.annual-scope-line{flex-wrap:wrap;gap:0}.annual-volume{gap:10px}.annual-volume>strong{font-size:34px}.annual-volume>span{font-size:14px}.annual-change{font-size:11px}.annual-ruler-key{flex-direction:column;gap:4px}.annual-ruler{margin-top:30px}.annual-month{padding:15px 14px}.annual-month strong{font-size:17px}.annual-month-rate strong{font-size:24px}.annual-unit{min-height:86px}.annual-scope-line h3{font-size:14px}.annual-context{font-size:11px}.annual-gap{margin-bottom:18px}}
 @media(prefers-reduced-motion:reduce){.annual-toggle svg{transition:none}}
 @media print{.annual-body[hidden]{display:block}.annual-toggle,.annual-back,.annual-source{display:none}.annual-plan{break-inside:avoid;box-shadow:none}.annual-unit{color:black}.annual-context{color:black}}
+
+/* One selected consultation: actionable day on the left, month evidence on the right.
+   Available width = panel width - 56px padding; two flexible columns with 32px gap. */
+.clinic-pace{--pace-ink:var(--accent);margin-top:25px;padding:22px 0 0;border-top:1px solid var(--soft-line)}
+.pace-heading{display:flex;align-items:center;justify-content:space-between;gap:20px}.annual-plan .pace-heading h3{font-size:16px}.pace-heading p{margin:5px 0 0;font-size:12px;color:var(--muted)}.pace-date-controls{display:flex;gap:6px;align-items:center;flex:none}.pace-date-controls button{width:36px;height:36px;padding:0;border:0;background:var(--raised);border-radius:50%;font-size:22px;line-height:1}.pace-date-controls input{min-height:36px;width:146px;font-size:12px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:7px 9px;color:var(--text)}.pace-date-controls button:disabled{opacity:.4;cursor:default;box-shadow:none;transform:none}
+.pace-stamp{font-size:12px;color:var(--muted);margin:15px 0 14px}.pace-layout{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:38px;align-items:center}.pace-figures{display:flex;align-items:center;gap:24px;justify-content:space-between}.pace-figures>div{display:flex;flex-direction:column;gap:5px;min-width:0}.pace-figures span{font-size:12px;color:var(--muted);white-space:nowrap}.pace-figures strong{font-size:29px;line-height:1.15;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-1px}.pace-figures .pace-remainder{padding:12px 18px;background:var(--accent-soft);border-radius:18px;min-width:110px;box-shadow:inset 0 1px 0 color-mix(in oklch,var(--surface) 65%,transparent)}.pace-remainder strong{color:var(--pace-ink);font-size:36px}.clinic-pace[data-state=day-done],.clinic-pace[data-state=month-done]{--pace-ink:var(--positive)}.clinic-pace[data-state=day-done] .pace-remainder,.clinic-pace[data-state=month-done] .pace-remainder{background:color-mix(in oklch,var(--positive) 10%,var(--surface))}.clinic-pace[data-state=no-target]{--pace-ink:var(--muted)}
+.pace-progress{height:10px;background:var(--raised);border-radius:100px;overflow:hidden;margin-top:18px}.pace-progress-fill{height:100%;width:100%;transform:scaleX(0);transform-origin:left;background:var(--pace-ink);border-radius:100px}.pace-progress-caption{display:flex;justify-content:space-between;gap:10px;font-size:11px;color:var(--muted);margin-top:9px}.pace-progress-caption>span:first-child{color:var(--pace-ink)}.pace-month-result{min-width:0}.pace-month-line{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-variant-numeric:tabular-nums;font-size:12px}.pace-month-line strong{font-size:14px;font-weight:550}.pace-month-line>span{font-size:11px;color:var(--muted);white-space:nowrap}.pace-chart-legend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--muted);margin:10px 0 3px}.pace-chart-legend>span{display:flex;align-items:center;gap:5px}.pace-chart-legend>span:last-child{margin-left:auto}.pace-bar-key{height:8px;width:5px;border-radius:1px;background:var(--accent)}.pace-goal-key{width:12px;height:2px;background:var(--text)}.pace-chart svg{width:100%;height:auto;display:block;overflow:visible}.pace-chart text{font:16px var(--font,system-ui);fill:var(--muted)}.pace-day-bar{fill:var(--accent);opacity:.8}.pace-goal-tick{stroke:var(--text);stroke-width:2;stroke-linecap:round}.pace-current-day{fill:var(--accent-soft)}.pace-hit{fill:transparent}.pace-chart [role=button]{cursor:pointer}.pace-chart [role=button]:focus{outline:none}.pace-chart [role=button]:focus .pace-hit{stroke:var(--accent);stroke-width:1.5;rx:5}.pace-chart [role=button]:hover .pace-hit{fill:color-mix(in oklch,var(--accent) 7%,transparent)}
+.pace-note,.pace-source,.pace-method p{font-size:11px;line-height:1.6;color:var(--muted)}.pace-note{margin:17px 0 6px}.pace-source{margin:8px 0 0}.pace-method{font-size:12px}.pace-method summary{cursor:pointer;width:fit-content;padding:7px 0;min-height:32px}.pace-method p{margin:6px 0;max-width:100ch}.pace-method summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}.pace-missing{margin:16px 0 0;font-size:12px;line-height:1.6;color:var(--muted)}
+.clinic-unit-pace{grid-column:1/-1;display:flex;flex-direction:column;gap:5px;margin-top:4px;padding:8px 10px;background:var(--raised);border-radius:10px}.annual-unit[aria-pressed=true] .clinic-unit-pace{background:var(--surface)}.clinic-row-caption{font-size:11px;color:var(--muted);line-height:1.5}.clinic-row-numbers{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--text)}.clinic-row-numbers>span{white-space:nowrap}.clinic-row-numbers b{font-weight:600;font-variant-numeric:tabular-nums}.pace-pending{color:var(--plan-warn)}.pace-complete{color:var(--positive)}
+@media(max-width:1100px){.pace-layout{gap:24px;grid-template-columns:1fr 1.1fr}.pace-figures{gap:12px}.pace-figures .pace-remainder{min-width:94px;padding:11px 14px}.pace-figures strong{font-size:26px}.pace-remainder strong{font-size:32px}.pace-month-line{flex-wrap:wrap;gap:4px}.pace-chart-legend{gap:10px}.pace-chart-legend>span:last-child{display:none}}
+@media(max-width:850px){.pace-layout{grid-template-columns:1fr;gap:24px}.pace-month-line{flex-wrap:nowrap}.pace-chart svg{min-height:110px}.annual-layout{grid-template-columns:1fr;gap:20px}.annual-comparison{max-width:none}.annual-units{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.clinic-unit-pace{padding:8px}.clinic-row-numbers{gap:8px}.annual-volume>strong{font-size:34px}}
+@media(max-width:640px){.clinic-pace{margin-top:20px;padding-top:20px}.pace-heading{align-items:start;flex-wrap:wrap;gap:14px}.pace-date-controls{width:100%;justify-content:space-between}.pace-date-controls button{height:44px;width:44px}.pace-date-controls input{min-height:44px;flex:1;font-size:14px}.pace-figures{gap:10px}.pace-figures span{font-size:12px}.pace-figures strong{font-size:26px}.pace-figures .pace-remainder{min-width:83px;padding:12px}.pace-remainder strong{font-size:31px}.pace-progress-caption{font-size:11px;flex-wrap:wrap;gap:4px}.pace-month-line{flex-wrap:wrap;gap:6px}.pace-chart{overflow-x:auto;scrollbar-width:thin;padding:2px}.pace-chart svg{width:680px;max-width:none}.pace-stamp,.pace-note,.pace-source,.pace-method p{font-size:12px}.annual-units{grid-template-columns:1fr}.clinic-row-caption,.clinic-row-numbers{font-size:12px}.clinic-row-numbers{justify-content:space-between;gap:5px}.annual-unit-name{font-size:14px}.pace-chart-legend{font-size:12px}.pace-method summary{min-height:44px;padding:12px 0}}
+@media print{.pace-date-controls,.pace-method{display:none}.pace-chart{overflow:visible}.pace-chart svg{width:100%}.pace-remainder{box-shadow:none}}
 </style></head>
 <body>
 <a class="skip" href="#main">Перейти к отчёту</a>
@@ -429,8 +442,28 @@ dialog{border-radius:24px;box-shadow:var(--float-shadow);padding:26px}dialog::ba
           <div class="annual-month-rate"><strong id="annualMonthRate"></strong><span>к плану месяца на дату</span></div>
         </div>
       </div>
-      <div class="annual-comparison"><div class="annual-comparison-head"><h3>Консультации</h3><span>К плану на дату</span></div><div id="annualUnits" class="annual-units" role="group" aria-label="Выбрать подразделение в годовом плане"></div><p class="annual-unit-hint">Нажмите на консультацию, чтобы рассмотреть её годовой план.</p></div>
+      <div class="annual-comparison"><div class="annual-comparison-head"><h3>Консультации</h3><span>К плану на дату</span></div><div id="annualUnits" class="annual-units" role="group" aria-label="Выбрать подразделение в годовом плане"></div><p class="annual-unit-hint">Нажмите на консультацию, чтобы рассмотреть её годовой и дневной план.</p></div>
     </div>
+<section id="clinicPace" class="clinic-pace" aria-labelledby="clinicPaceTitle">
+  <div class="pace-heading"><div><h3 id="clinicPaceTitle">Дневной ориентир</h3><p id="clinicPaceScope">Всё учреждение</p></div><div class="pace-date-controls"><button id="clinicPacePrev" type="button" aria-label="Предыдущий день">‹</button><label class="sr-only" for="clinicPaceDate">Дата дневного ориентира</label><input id="clinicPaceDate" type="date"><button id="clinicPaceNext" type="button" aria-label="Следующий день">›</button></div></div>
+  <p id="clinicPaceMissing" class="pace-missing" hidden></p>
+  <div id="clinicPaceContent">
+    <p id="clinicPaceStamp" class="pace-stamp"></p>
+    <div class="pace-layout">
+      <div class="pace-day-result">
+        <div class="pace-figures"><div><span>Нужно за день</span><strong id="clinicPaceGoal"></strong></div><div><span>Выполнено</span><strong id="clinicPaceActual"></strong></div><div class="pace-remainder"><span>Осталось</span><strong id="clinicPaceLeft"></strong></div></div>
+        <div id="clinicPaceProgress" class="pace-progress" role="img" aria-label="Выполнение дневного ориентира"><div id="clinicPaceFill" class="pace-progress-fill"></div></div>
+        <div class="pace-progress-caption"><span id="clinicPaceStatus"></span><span>услуги 001983 + 001984</span></div>
+      </div>
+      <div class="pace-month-result"><div class="pace-month-line"><strong id="clinicPaceMonth"></strong><span id="clinicPaceMonthLeft"></span></div><div class="pace-chart-legend"><span><i class="pace-bar-key"></i>Выполнено</span><span><i class="pace-goal-key"></i>Нужно за день</span><span>Нажмите на день</span></div><div id="clinicPaceChart" class="pace-chart"></div></div>
+    </div>
+    <p id="clinicPaceBase" class="pace-note"></p>
+    <details class="pace-method"><summary>Как рассчитан дневной ориентир</summary><p id="clinicPaceFormula"></p><p>Пн–Пт: вес 1. Сб и Вс: по 0,5, вместе один условный день. Остаток месячного плана на начало выбранного дня распределяется на оставшиеся дни с этими весами. Праздники и индивидуальные графики не учитываются.</p><p>В каждой строке консультации указан её месячный план. Общий итог использует месячный план учреждения из исходного отчёта; при расхождении с суммой консультаций сохраняется значение источника. Дневные ориентиры округляются вверх отдельно для каждой ЖК и для учреждения.</p></details>
+    <p id="clinicPaceSource" class="pace-source"></p>
+  </div>
+  <p id="clinicPaceAnnouncement" class="sr-only" role="status" aria-live="polite"></p>
+</section>
+
     <p class="annual-context" id="annualContext"></p>
     <details class="annual-source"><summary>Исходные показатели и расчёт</summary><p id="annualBasis"></p><div class="annual-source-scroll" tabindex="0" aria-label="Исходные показатели годового плана"><table id="annualSourceTable"></table></div><p id="annualWarnings" class="annual-source-note"></p></details>
     <p id="annualAnnouncement" class="sr-only" role="status" aria-live="polite"></p>
@@ -559,6 +592,7 @@ function render(animate=false,announce=false){
   $("annualRuler").setAttribute("aria-label",row.name+": выполнено "+women(row.yearActual)+" из "+count.format(row.yearPlan)+" по годовому плану. "+rate(row.yearShare)+" годового плана; "+rate(row.yearRate)+" к плану на "+stamp+".");
   $("annualRuler").title="До "+period+": "+women(row.previousActual)+"; за месяц: "+women(row.monthActual)+". Суммарная доля годового плана: "+rate(row.yearShare)+".";
   for(const button of $("annualUnits").querySelectorAll("button[data-annual-unit]"))button.setAttribute("aria-pressed",Number(button.dataset.annualUnit)===selected);
+  window.ClinicPace?.select(selected,animate);
   if(announce)$("annualAnnouncement").textContent=row.name+": "+rate(row.yearRate)+" к плану на дату, "+women(row.yearActual)+".";
 }
 function select(index,keyboard=false){
@@ -566,7 +600,7 @@ function select(index,keyboard=false){
   selected=index;render(!keyboard,true);
 }
 function expand(value,keyboard=false){
-  if(!plan)return;expanded=value;stop();
+  if(!plan)return;expanded=value;stop();window.ClinicPace?.settle();
   $("annualBody").hidden=!value;$("annualToggle").setAttribute("aria-expanded",value);
   $("annualToggleLabel").textContent=value?"Свернуть":"Раскрыть план";
   if(value){
@@ -595,7 +629,7 @@ function init(data,meta){
   $("annualBasis").textContent=plan.basis+" Процент на дату = факт ÷ план на дату × 100. Тренд рассчитан по неокруглённым процентам относительно начала месяца. Число женщин из годового отчёта не складывается с количеством услуг месячной выгрузки.";
   $("annualContext").textContent="Отдельный отчёт ДОРЗ на "+stamp+" "+plan.year+". Фильтры месячных услуг не изменяют этот отчёт; консультацию можно выбрать здесь."+(plan.asOf!==meta.dataEnd?" Дата плана отличается от последней даты выгрузки услуг.":"");
   $("annualWarnings").textContent=plan.warnings.join(" ");$("annualWarnings").hidden=!plan.warnings.length;
-  $("annualUnits").innerHTML=plan.departments.map((row,index)=>'<button type="button" class="annual-unit" data-annual-unit="'+index+'" aria-pressed="false"><span class="annual-unit-name">'+escape(row.name)+'</span><strong>'+rate(row.yearRate)+'</strong><span class="annual-unit-track" aria-hidden="true"><i style="transform:scaleX('+clamp((row.yearRate||0)/100)+')"></i></span><small>'+women(row.yearActual)+' с начала года</small><span class="annual-unit-change">'+(row.trend===null?"Нет базы":change.format(row.trend)+" п.п.")+'</span></button>').join("");
+  $("annualUnits").innerHTML=plan.departments.map((row,index)=>'<button type="button" class="annual-unit" data-annual-unit="'+index+'" aria-pressed="false"><span class="annual-unit-name">'+escape(row.name)+'</span><strong>'+rate(row.yearRate)+'</strong><span class="annual-unit-track" aria-hidden="true"><i style="transform:scaleX('+clamp((row.yearRate||0)/100)+')"></i></span><small>'+women(row.yearActual)+' с начала года</small><span class="annual-unit-change">'+(row.trend===null?"Нет базы":change.format(row.trend)+" п.п.")+'</span><span class="clinic-unit-pace" data-clinic-pace="'+index+'"></span></button>').join("");
   $("annualUnits").addEventListener("click",event=>{const button=event.target.closest("button[data-annual-unit]");if(button)select(Number(button.dataset.annualUnit),event.detail===0);});
   $("annualReset").addEventListener("click",event=>select(-1,event.detail===0));
   $("annualToggle").addEventListener("click",event=>expand(!expanded,event.detail===0));
@@ -603,6 +637,179 @@ function init(data,meta){
 }
 function setVisible(visible){if(!plan)return;$("annualPlan").hidden=!visible;render(false);}
 window.AnnualPlan={init,setVisible,select,expand};
+})();
+
+(() => {
+'use strict';
+const utc=value=>new Date(value+'T12:00:00Z');
+function monthDays(date){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(utc(date).getTime())||utc(date).toISOString().slice(0,10)!==date)throw new Error('Некорректная дата');
+  const prefix=date.slice(0,7),cursor=utc(prefix+'-01'),days=[];
+  while(cursor.toISOString().slice(0,7)===prefix){
+    const weekday=cursor.getUTCDay();
+    days.push({date:cursor.toISOString().slice(0,10),weekday,units:weekday===0||weekday===6?1:2});
+    cursor.setUTCDate(cursor.getUTCDate()+1);
+  }
+  return days;
+}
+function calculate({target,date,quantities={},snapshotStart,snapshotEnd}){
+  if(!Number.isSafeInteger(target)||target<0||target>1e9)throw new Error('Месячный план должен быть целым неотрицательным числом');
+  const days=monthDays(date),first=days[0].date,index=days.findIndex(d=>d.date===date);
+  if(!snapshotStart||snapshotStart>first)return {ready:false,reason:'incomplete-month',first};
+  if(!snapshotEnd||date>snapshotEnd)return {ready:false,reason:'outside-snapshot',first};
+  const quantity=day=>{
+    const value=quantities[day]??0;
+    if(!Number.isSafeInteger(value)||value<0)throw new Error('Некорректное количество услуг');
+    return value;
+  };
+  let cumulative=0;
+  const totalUnits=days.reduce((s,d)=>s+d.units,0);
+  const before=days.slice(0,index).reduce((s,d)=>s+quantity(d.date),0);
+  const actual=quantity(date),monthActual=before+actual;
+  const remainingUnits=days.slice(index).reduce((s,d)=>s+d.units,0);
+  const remainingAtStart=Math.max(0,target-before);
+  // Integers in half-day units avoid rounding Sat+Sun into two full days.
+  const dailyTarget=Math.ceil(remainingAtStart*days[index].units/remainingUnits);
+  const dailyLeft=Math.max(0,dailyTarget-actual);
+  const expectedByDate=target*days.slice(0,index+1).reduce((s,d)=>s+d.units,0)/totalUnits;
+  const history=days.map(day=>{
+    cumulative+=day.units;
+    const known=day.date<=snapshotEnd;
+    return {...day,known,actual:known?quantity(day.date):null,base:target*day.units/totalUnits,expected:target*cumulative/totalUnits};
+  });
+  return {ready:true,date,target,days:history,before,actual,monthActual,dailyTarget,dailyLeft,
+    baseDaily:target*days[index].units/totalUnits,dayWeight:days[index].units/2,
+    totalWeight:totalUnits/2,remainingWeight:remainingUnits/2,expectedByDate,
+    monthLeft:Math.max(0,target-monthActual),overDaily:Math.max(0,actual-dailyTarget),
+    ratio:dailyTarget?actual/dailyTarget:null,monthRatio:target?monthActual/target:null,
+    status:target===0?'no-target':before>=target?'month-done':dailyLeft===0?'day-done':'in-progress'};
+}
+window.DailyPaceCore={monthDays,calculate};
+})();
+
+(() => {
+'use strict';
+const $=id=>document.getElementById(id);
+const E=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const number=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:1});
+const q=value=>number.format(value);
+const normalize=value=>String(value).toLocaleLowerCase('ru-RU').replace(/ё/g,'е').replace(/\s+/g,'').replace(/№/g,'');
+const formatDate=value=>new Date(value+'T12:00:00Z').toLocaleDateString('ru-RU',{day:'numeric',month:'long',timeZone:'UTC'});
+const weekday=value=>new Date(value+'T12:00:00Z').getUTCDay();
+const dayName=value=>['Вс','Пн','Вт','Ср','Чт','Пт','Сб'][weekday(value)];
+const clamp=value=>Math.max(0,Math.min(1,value));
+let data,selected=-1,date='',index=[],totalQuantities={},animation=null,viewKey='',min='',max='',status='',keyboard=true;
+function stop(){animation?.cancel();animation=null;}
+function makeIndex(source){
+  const month=source.annualPlan.asOf.slice(0,7);
+  return source.annualPlan.departments.map(row=>{
+    const id=source.departments.findIndex(name=>normalize(name)===normalize(row.name));
+    const quantities={};
+    for(const r of source.records){
+      if(r[1]===id&&r[0].startsWith(month)&&source.targets.includes(source.services[r[3]].code))quantities[r[0]]=(quantities[r[0]]||0)+r[4];
+    }
+    return {row,id,quantities};
+  });
+}
+function calculate(which=-1,day=date){
+  if(!data?.annualPlan)return {ready:false,reason:'no-plan'};
+  if(!day||day.slice(0,7)!==data.annualPlan.asOf.slice(0,7))return {ready:false,reason:'other-month'};
+  const unit=which<0?null:index[which];
+  if(which>=0&&!unit)return {ready:false,reason:'unknown-unit'};
+  if(unit?.id===-1||(!unit&&index.some(x=>x.id===-1)))return {ready:false,reason:'missing-unit'};
+  const row=unit?.row||data.annualPlan.total;
+  return window.DailyPaceCore.calculate({target:row.monthPlan,date:day,quantities:unit?.quantities||totalQuantities,snapshotStart:data.meta.start,snapshotEnd:data.meta.dataEnd});
+}
+function reason(result){
+  return ({'no-plan':'Добавьте месячный план в окне «Годовой план…».','other-month':'Месяц плана и выгрузки различается. Обновите дату и месячный план в программе.',
+    'unknown-unit':'Для этой консультации нет плана.','missing-unit':'Консультация отсутствует в выгрузке. Её факт не подставляется как ноль.',
+    'incomplete-month':'Для расчёта нужна полная выгрузка с 1-го числа месяца.','outside-snapshot':'На эту дату в выгрузке ещё нет данных.'})[result.reason]||'Недостаточно данных для расчёта.';
+}
+function rowMarkup(which){
+  const row=data.annualPlan.departments[which],v=calculate(which);
+  if(!v.ready)return '<span class="clinic-row-caption">План месяца: '+q(row.monthPlan)+' · '+E(reason(v))+'</span>';
+  return '<span class="clinic-row-caption">План месяца '+q(row.monthPlan)+' · '+E(formatDate(date))+'</span><span class="clinic-row-numbers"><span>Нужно <b>'+q(v.dailyTarget)+'</b></span><span>Есть <b>'+q(v.actual)+'</b></span><span class="'+(v.status==='no-target'?'':v.dailyLeft?'pace-pending':'pace-complete')+'">Осталось <b>'+q(v.dailyLeft)+'</b></span></span>';
+}
+function refreshRows(){
+  for(const node of document.querySelectorAll('[data-clinic-pace]'))node.innerHTML=rowMarkup(Number(node.dataset.clinicPace));
+}
+function drawMonth(v){
+  const width=800,height=102,left=34,right=10,top=13,bottom=24,w=width-left-right,h=height-top-bottom;
+  const rows=v.days,known=rows.filter(d=>d.known);
+  const values=known.map(d=>({...d,goal:calculate(selected,d.date).dailyTarget}));
+  const maximum=Math.max(1,...values.flatMap(d=>[d.actual,d.goal]));
+  const ceiling=Math.max(1,Math.ceil(maximum/5)*5);
+  const x=i=>left+(i+.5)*w/rows.length,y=value=>top+h-value/ceiling*h;
+  let body='<line class="gridline" x1="'+left+'" x2="'+(width-right)+'" y1="'+y(0)+'" y2="'+y(0)+'"/><text x="'+(left-7)+'" y="'+(y(0)+4)+'" text-anchor="end">0</text><text x="'+(left-7)+'" y="'+(y(ceiling)+4)+'" text-anchor="end">'+q(ceiling)+'</text>';
+  rows.forEach((day,i)=>{
+    const xx=x(i),bw=Math.min(14,w/rows.length*.55),goal=day.known?values[i].goal:null;
+    if(day.date===date)body+='<rect class="pace-current-day" x="'+(xx-w/rows.length*.45)+'" y="'+(top-5)+'" width="'+w/rows.length*.9+'" height="'+(h+bottom+3)+'" rx="6"/>';
+    if(day.known){
+      body+='<rect class="pace-day-bar" x="'+(xx-bw/2)+'" y="'+y(day.actual)+'" width="'+bw+'" height="'+(y(0)-y(day.actual))+'" rx="2"/>';
+      body+='<line class="pace-goal-tick" x1="'+(xx-bw*.8)+'" x2="'+(xx+bw*.8)+'" y1="'+y(goal)+'" y2="'+y(goal)+'"/>';
+    }else body+='<text x="'+xx+'" y="'+(y(0)-6)+'" text-anchor="middle">·</text>';
+    if(i%2===0)body+='<text x="'+xx+'" y="'+(height-3)+'" text-anchor="middle">'+Number(day.date.slice(-2))+'</text>';
+    const tip=dayName(day.date)+', '+formatDate(day.date)+'; вес '+(day.units/2)+' дня. '+(day.known?'План на день '+goal+', факт '+day.actual+', осталось '+Math.max(0,goal-day.actual):'Фактических данных ещё нет');
+    body+='<g '+(day.known?'role="button" tabindex="0" data-pace-day="'+day.date+'"':'role="img"')+' aria-label="'+E(tip)+'"><title>'+E(tip)+'</title><rect class="pace-hit" x="'+(left+i*w/rows.length)+'" y="0" width="'+w/rows.length+'" height="'+height+'"/></g>';
+  });
+  $('clinicPaceChart').innerHTML='<svg viewBox="0 0 '+width+' '+height+'" aria-label="Дневной план и выполненные услуги по дням месяца">'+body+'</svg>';
+}
+function render(animate=false){
+  if(!data)return;stop();refreshRows();
+  const section=$('clinicPace'),v=calculate(selected),row=selected<0?data.annualPlan.total:index[selected]?.row;
+  $('clinicPaceScope').textContent=row?.name||'Всё учреждение';
+  $('clinicPaceDate').value=date;
+  $('clinicPacePrev').disabled=min>max||!date||date<=min;$('clinicPaceNext').disabled=min>max||!date||date>=max;
+  $('clinicPaceContent').hidden=!v.ready;$('clinicPaceMissing').hidden=v.ready;
+  if(!v.ready){$('clinicPaceMissing').textContent=reason(v);return;}
+  const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Moscow'}).format(new Date());
+  $('clinicPaceStamp').textContent=(date===today?'Сегодня, ':dayName(date)+', ')+formatDate(date)+' · '+(v.dayWeight===.5?'выходной, вес 0,5':'будний день, вес 1');
+  $('clinicPaceGoal').textContent=q(v.dailyTarget);$('clinicPaceActual').textContent=q(v.actual);$('clinicPaceLeft').textContent=q(v.dailyLeft);
+  section.dataset.state=v.status;
+  const done=v.status==='month-done'||(v.status==='day-done'&&v.monthLeft===0);
+  const statusText=v.status==='no-target'?'Месячный план равен нулю':done?'Месячный план выполнен':v.status==='day-done'?'Ориентир на день достигнут':'До ориентира на день';
+  $('clinicPaceStatus').textContent=statusText;
+  $('clinicPaceProgress').setAttribute('aria-label','Выполнено '+v.actual+' услуг при ориентире '+v.dailyTarget);
+  const ratio=done?1:v.ratio===null?0:clamp(v.ratio),fill=$('clinicPaceFill');
+  const changed=viewKey!==selected+'|'+date;viewKey=selected+'|'+date;
+  if(animate&&changed&&!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches&&window.anime){
+    animation=window.anime.animate(fill,{scaleX:ratio,duration:240,ease:'outQuint'});
+  }else fill.style.transform='scaleX('+ratio+')';
+  $('clinicPaceMonth').textContent=q(v.monthActual)+' из '+q(v.target)+' услуг за месяц';
+  $('clinicPaceMonthLeft').textContent='До плана месяца: '+q(v.monthLeft);
+  $('clinicPaceBase').textContent='Базовый темп: '+q(v.baseDaily)+' за такой день · осталось '+q(v.remainingWeight)+' условных дней, включая выбранный';
+  $('clinicPaceFormula').textContent='На начало дня выполнено '+q(v.before)+'. Остаток '+q(Math.max(0,v.target-v.before))+' ÷ '+q(v.remainingWeight)+' условных дней × '+q(v.dayWeight)+' = '+q(v.dailyTarget)+' услуг после округления вверх. Факт выбранного дня не меняет его ориентир.';
+  $('clinicPaceSource').textContent='Факт: 001983 + 001984 из выгрузки по '+formatDate(data.meta.dataEnd)+'. '+(date===today?'Текущий день может быть заполнен частично. ':'')+'Годовые проценты выше сохраняют методику исходного отчёта.';
+  drawMonth(v);
+  if(changed)$('clinicPaceAnnouncement').textContent=row.name+': '+statusText+'. Выполнено '+v.actual+', осталось '+v.dailyLeft+'.';
+  status=v.status;
+}
+function setDate(value,animate=false){
+  if(!value||value<min||value>max){$('clinicPaceDate').value=date;return;}
+  date=value;render(animate);
+}
+function select(which,animate=false){selected=which;render(animate);}
+function settle(){stop();render(false);}
+function init(source){
+  if(!source.annualPlan)return;
+  data=source;index=makeIndex(source);totalQuantities={};
+  for(const unit of index)for(const [day,value] of Object.entries(unit.quantities))totalQuantities[day]=(totalQuantities[day]||0)+value;
+  const planMonth=data.annualPlan.asOf.slice(0,7),days=window.DailyPaceCore.monthDays(planMonth+'-01');
+  min=[planMonth+'-01',data.meta.start].sort().at(-1);max=[days.at(-1).date,data.meta.dataEnd,data.meta.end].sort()[0];
+  date=data.meta.dataEnd.slice(0,7)===planMonth?max:data.meta.dataEnd;
+  $('clinicPaceDate').min=min;$('clinicPaceDate').max=max;
+  $('clinicPaceDate').disabled=min>max;
+  $('clinicPaceDate').addEventListener('pointerdown',()=>{keyboard=false;});
+  $('clinicPaceDate').addEventListener('keydown',()=>{keyboard=true;});
+  $('clinicPaceDate').addEventListener('change',event=>setDate(event.target.value,!keyboard));
+  for(const [id,step] of [['clinicPacePrev',-1],['clinicPaceNext',1]])$(id).addEventListener('click',event=>{
+    const next=new Date(date+'T12:00:00Z');next.setUTCDate(next.getUTCDate()+step);setDate(next.toISOString().slice(0,10),event.detail>0);
+  });
+  $('clinicPaceChart').addEventListener('click',event=>{const day=event.target.closest('[data-pace-day]');if(day)setDate(day.dataset.paceDay,event.detail>0);});
+  $('clinicPaceChart').addEventListener('keydown',event=>{const day=event.target.closest('[data-pace-day]');if(day&&['Enter',' '].includes(event.key)){event.preventDefault();const chosen=day.dataset.paceDay;setDate(chosen);$('clinicPaceChart').querySelector('[data-pace-day="'+chosen+'"]').focus();}});
+  render();
+}
+window.ClinicPace={init,select,calculate,makeIndex,rowMarkup,refreshRows,settle,setDate};
 })();
 
 (() => {
@@ -887,7 +1094,7 @@ function initialize(){
   document.addEventListener("keydown",e=>{if(e.key==="Escape")$("tooltip").hidden=true;});
   window.addEventListener("blur",()=>$("tooltip").hidden=true);
   let resizeTimer;window.addEventListener("resize",()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(render,150);});
-  initializeFilters();initializeTheme();initializeDoctorServices();window.AnnualPlan?.init(D.annualPlan,D.meta);render();
+  initializeFilters();initializeTheme();initializeDoctorServices();window.ClinicPace?.init(D);window.AnnualPlan?.init(D.annualPlan,D.meta);render();
 }
 // Search menus keep a draft query separate from the applied filter.
 const pickers = new Map();

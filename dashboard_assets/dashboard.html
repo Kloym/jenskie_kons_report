@@ -81,8 +81,28 @@
           <div class="annual-month-rate"><strong id="annualMonthRate"></strong><span>к плану месяца на дату</span></div>
         </div>
       </div>
-      <div class="annual-comparison"><div class="annual-comparison-head"><h3>Консультации</h3><span>К плану на дату</span></div><div id="annualUnits" class="annual-units" role="group" aria-label="Выбрать подразделение в годовом плане"></div><p class="annual-unit-hint">Нажмите на консультацию, чтобы рассмотреть её годовой план.</p></div>
+      <div class="annual-comparison"><div class="annual-comparison-head"><h3>Консультации</h3><span>К плану на дату</span></div><div id="annualUnits" class="annual-units" role="group" aria-label="Выбрать подразделение в годовом плане"></div><p class="annual-unit-hint">Нажмите на консультацию, чтобы рассмотреть её годовой и дневной план.</p></div>
     </div>
+<section id="clinicPace" class="clinic-pace" aria-labelledby="clinicPaceTitle">
+  <div class="pace-heading"><div><h3 id="clinicPaceTitle">Дневной ориентир</h3><p id="clinicPaceScope">Всё учреждение</p></div><div class="pace-date-controls"><button id="clinicPacePrev" type="button" aria-label="Предыдущий день">‹</button><label class="sr-only" for="clinicPaceDate">Дата дневного ориентира</label><input id="clinicPaceDate" type="date"><button id="clinicPaceNext" type="button" aria-label="Следующий день">›</button></div></div>
+  <p id="clinicPaceMissing" class="pace-missing" hidden></p>
+  <div id="clinicPaceContent">
+    <p id="clinicPaceStamp" class="pace-stamp"></p>
+    <div class="pace-layout">
+      <div class="pace-day-result">
+        <div class="pace-figures"><div><span>Нужно за день</span><strong id="clinicPaceGoal"></strong></div><div><span>Выполнено</span><strong id="clinicPaceActual"></strong></div><div class="pace-remainder"><span>Осталось</span><strong id="clinicPaceLeft"></strong></div></div>
+        <div id="clinicPaceProgress" class="pace-progress" role="img" aria-label="Выполнение дневного ориентира"><div id="clinicPaceFill" class="pace-progress-fill"></div></div>
+        <div class="pace-progress-caption"><span id="clinicPaceStatus"></span><span>услуги 001983 + 001984</span></div>
+      </div>
+      <div class="pace-month-result"><div class="pace-month-line"><strong id="clinicPaceMonth"></strong><span id="clinicPaceMonthLeft"></span></div><div class="pace-chart-legend"><span><i class="pace-bar-key"></i>Выполнено</span><span><i class="pace-goal-key"></i>Нужно за день</span><span>Нажмите на день</span></div><div id="clinicPaceChart" class="pace-chart"></div></div>
+    </div>
+    <p id="clinicPaceBase" class="pace-note"></p>
+    <details class="pace-method"><summary>Как рассчитан дневной ориентир</summary><p id="clinicPaceFormula"></p><p>Пн–Пт: вес 1. Сб и Вс: по 0,5, вместе один условный день. Остаток месячного плана на начало выбранного дня распределяется на оставшиеся дни с этими весами. Праздники и индивидуальные графики не учитываются.</p><p>В каждой строке консультации указан её месячный план. Общий итог использует месячный план учреждения из исходного отчёта; при расхождении с суммой консультаций сохраняется значение источника. Дневные ориентиры округляются вверх отдельно для каждой ЖК и для учреждения.</p></details>
+    <p id="clinicPaceSource" class="pace-source"></p>
+  </div>
+  <p id="clinicPaceAnnouncement" class="sr-only" role="status" aria-live="polite"></p>
+</section>
+
     <p class="annual-context" id="annualContext"></p>
     <details class="annual-source"><summary>Исходные показатели и расчёт</summary><p id="annualBasis"></p><div class="annual-source-scroll" tabindex="0" aria-label="Исходные показатели годового плана"><table id="annualSourceTable"></table></div><p id="annualWarnings" class="annual-source-note"></p></details>
     <p id="annualAnnouncement" class="sr-only" role="status" aria-live="polite"></p>

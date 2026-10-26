@@ -21,6 +21,8 @@ from zhk_monthly_report import (
     normalize_key, parse_date, service_code, ensure_dependencies,
 )
 
+from zhk_annual_plan import load_config, snapshot, edit_plan
+
 BASE = Path(__file__).resolve().parent
 TARGET_CODES = ("001983", "001984")
 CENT = Decimal("0.01")
@@ -225,7 +227,7 @@ def collect(path, start, end, *, sheet_name=None, all_departments=False,
     }
 
 
-def write_dashboard(data, output, *, overwrite=False, source=None):
+def write_dashboard(data, output, *, overwrite=False, source=None, plan_path=None, include_plan=True):
     output = Path(output).resolve()
     if output.suffix.lower() != ".html":
         raise DashboardError("Выходной файл должен иметь расширение .html.")
@@ -233,13 +235,21 @@ def write_dashboard(data, output, *, overwrite=False, source=None):
         raise DashboardError("Нельзя перезаписывать исходный файл.")
     if output.exists() and not overwrite:
         raise DashboardError(f"Файл уже существует: {output}. Укажите --overwrite.")
+    data = dict(data)
+    data.pop("annualPlan", None)
+    if include_plan:
+        plan_source = Path(plan_path) if plan_path is not None else BASE / "annual_plan.json"
+        if plan_source.exists() or plan_path is not None:
+            data["annualPlan"] = snapshot(load_config(plan_source))
     payload = json.dumps(data, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     # Neutralize script terminators and HTML parser delimiters in source labels.
     payload = payload.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
     payload = payload.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
     template = (BASE / "dashboard_assets" / "dashboard.html").read_text(encoding="utf-8")
     css = (BASE / "dashboard_assets" / "dashboard.css").read_text(encoding="utf-8")
-    js = (BASE / "dashboard_assets" / "dashboard.js").read_text(encoding="utf-8")
+    css += "\n" + (BASE / "dashboard_assets" / "annual_plan.css").read_text(encoding="utf-8")
+    js = (BASE / "dashboard_assets" / "annual_plan.js").read_text(encoding="utf-8")
+    js += "\n" + (BASE / "dashboard_assets" / "dashboard.js").read_text(encoding="utf-8")
     anime = (BASE / "dashboard_assets" / "vendor" / "anime-4.5.0.umd.min.js").read_text(encoding="utf-8")
     anime_license = (BASE / "dashboard_assets" / "vendor" / "LICENSE-anime.md").read_text(encoding="utf-8")
     anime = "/*\n" + anime_license + "\n*/\n" + anime
@@ -279,7 +289,7 @@ def launch_dashboard():
 
     root = tk.Tk()
     root.title("Ритм консультаций • HTML-дашборд")
-    root.geometry("660x330")
+    root.geometry("700x430")
     root.configure(padx=24, pady=22)
     path_var, status = tk.StringVar(), tk.StringVar(value="Выберите полную выгрузку услуг за месяц.")
     today = local_today()
@@ -296,6 +306,19 @@ def launch_dashboard():
     for label, var in (("С", from_var), ("По", to_var)):
         ttk.Label(dates, text=label).pack(side="left", padx=(0, 8))
         ttk.Entry(dates, textvariable=var, width=16).pack(side="left", padx=(0, 20))
+    plan_row = ttk.Frame(root); plan_row.pack(fill="x", pady=(0, 14))
+    include_plan = tk.BooleanVar(value=True)
+    ttk.Checkbutton(plan_row, text="Добавить годовой план", variable=include_plan).pack(side="left")
+    plan_status = tk.StringVar()
+    def refresh_plan(saved=None):
+        try:
+            current = saved or (snapshot(load_config(BASE / "annual_plan.json")) if (BASE / "annual_plan.json").exists() else None)
+            plan_status.set("На " + date.fromisoformat(current["asOf"]).strftime("%d.%m.%Y") if current else "Ещё не заполнен")
+        except ValueError:
+            plan_status.set("Проверьте сохранённый план")
+    ttk.Label(plan_row, textvariable=plan_status).pack(side="left", padx=10)
+    ttk.Button(plan_row, text="Годовой план…", command=lambda: edit_plan(root, BASE / "annual_plan.json", refresh_plan)).pack(side="right")
+    refresh_plan()
     ttk.Label(root, textvariable=status, wraplength=600).pack(anchor="w", pady=(0, 16))
     messages = queue.Queue()
     def build():
@@ -308,12 +331,13 @@ def launch_dashboard():
         output = filedialog.asksaveasfilename(defaultextension=".html", initialfile=f"dashboard_{end:%Y-%m-%d}.html",
                                             filetypes=[("HTML", "*.html")])
         if not output: return
+        use_plan = include_plan.get()
         button.configure(state="disabled")
         status.set("Чтение Excel…")
         def worker():
             try:
                 data = collect(source, start, end, progress=lambda text: messages.put(("progress", text)))
-                result = write_dashboard(data, output, overwrite=True, source=source)
+                result = write_dashboard(data, output, overwrite=True, source=source, include_plan=use_plan)
                 messages.put(("done", result))
             except Exception as exc:
                 messages.put(("error", str(exc)))
@@ -348,7 +372,17 @@ def main(argv=None):
     parser.add_argument("--no-restore-missing", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--gui", action="store_true")
+    parser.add_argument("--annual-plan", type=Path, help="Сохранённый годовой план JSON; по умолчанию рядом с программой")
+    parser.add_argument("--without-annual-plan", action="store_true", help="Собрать отчёт без блока годового плана")
+    parser.add_argument("--edit-plan", action="store_true", help="Открыть окно ручного ввода годового плана")
     args = parser.parse_args(argv)
+    if args.edit_plan:
+        import tkinter as tk
+        root = tk.Tk(); root.withdraw()
+        editor = edit_plan(root, args.annual_plan or BASE / "annual_plan.json")
+        if editor is not None:
+            root.wait_window(editor)
+        root.destroy(); return 0
     if args.gui or not argv:
         launch_dashboard(); return 0
     try:
@@ -357,7 +391,8 @@ def main(argv=None):
         output = args.output or BASE / "dashboards" / f"dashboard_{start}_{args.date_to}.html"
         data = collect(source, start, args.date_to, sheet_name=args.sheet,
                        all_departments=args.all_departments, restore_missing=not args.no_restore_missing)
-        result = write_dashboard(data, output, overwrite=args.overwrite, source=source)
+        result = write_dashboard(data, output, overwrite=args.overwrite, source=source,
+                                 plan_path=args.annual_plan, include_plan=not args.without_annual_plan)
         print(f"Готово: {result}\nУслуг: {data['meta']['totalQuantity']:,}; "
               f"сумма: {data['meta']['totalCents'] / 100:,.2f} руб.\n"
               f"Последний день с данными: {data['meta']['dataEnd']}")

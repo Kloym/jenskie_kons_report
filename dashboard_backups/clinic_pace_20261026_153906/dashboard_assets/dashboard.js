@@ -233,7 +233,7 @@ function exportCsv(){
   const a=document.createElement("a");a.href=url;a.download="services_"+state.tab+"_"+v.start+"_"+v.end+".csv";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 function switchTab(tab){
-  state.tab=tab;state.limit=25;
+  state.tab=tab;state.limit=25;window.AnnualPlan?.setVisible(tab==="target");
   for(const b of document.querySelectorAll("[data-tab]")){const active=b.dataset.tab===tab;b.setAttribute("aria-selected",active);b.tabIndex=active?0:-1;}
   $("report").setAttribute("aria-labelledby",tab==="target"?"targetTab":"allTab");
   $("codeField").hidden=tab==="target";render();
@@ -280,7 +280,7 @@ function initialize(){
   document.addEventListener("keydown",e=>{if(e.key==="Escape")$("tooltip").hidden=true;});
   window.addEventListener("blur",()=>$("tooltip").hidden=true);
   let resizeTimer;window.addEventListener("resize",()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(render,150);});
-  initializeFilters();initializeTheme();initializeDoctorServices();render();
+  initializeFilters();initializeTheme();initializeDoctorServices();window.AnnualPlan?.init(D.annualPlan,D.meta);render();
 }
 // Search menus keep a draft query separate from the applied filter.
 const pickers = new Map();

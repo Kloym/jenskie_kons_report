@@ -280,7 +280,7 @@ function initialize(){
   document.addEventListener("keydown",e=>{if(e.key==="Escape")$("tooltip").hidden=true;});
   window.addEventListener("blur",()=>$("tooltip").hidden=true);
   let resizeTimer;window.addEventListener("resize",()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(render,150);});
-  initializeFilters();initializeTheme();initializeDoctorServices();window.AnnualPlan?.init(D.annualPlan,D.meta);render();
+  initializeFilters();initializeTheme();initializeDoctorServices();window.ClinicPace?.init(D);window.AnnualPlan?.init(D.annualPlan,D.meta);render();
 }
 // Search menus keep a draft query separate from the applied filter.
 const pickers = new Map();
