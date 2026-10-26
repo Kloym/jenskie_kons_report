@@ -22,9 +22,9 @@ from zhk_monthly_report import (
 )
 
 from zhk_annual_plan import load_config, snapshot, edit_plan
+from zhk_actuals import MonthlyServiceActuals, snapshot_from_services, TARGET_CODES
 
 BASE = Path(__file__).resolve().parent
-TARGET_CODES = ("001983", "001984")
 CENT = Decimal("0.01")
 ALIASES = {
     "date": {"дата", "дата услуги", "дата оказания услуги", "дата выполнения"},
@@ -75,7 +75,7 @@ def header_of(sheet):
 
 
 def collect(path, start, end, *, sheet_name=None, all_departments=False,
-            restore_missing=True, progress=None):
+            restore_missing=True, progress=None, actuals_from_services=False):
     """One full snapshot, Decimal row totals, compact daily aggregates."""
     path = Path(path).resolve()
     if start > end:
@@ -91,6 +91,7 @@ def collect(path, start, end, *, sheet_name=None, all_departments=False,
     donors, pending = defaultdict(set), []
     coverage = set()
     observed_start = observed_end = None
+    actuals = MonthlyServiceActuals(end) if actuals_from_services else None
 
     def add(key, quantity, price, restored=False):
         amount = (price * quantity).quantize(CENT, rounding=ROUND_HALF_UP)
@@ -130,6 +131,11 @@ def collect(path, start, end, *, sheet_name=None, all_departments=False,
                 raise DashboardError(f"{where}: неверная дата. Отчёт не сформирован.") from exc
             observed_start = min(observed_start or day, day)
             observed_end = max(observed_end or day, day)
+            if actuals is not None:
+                try:
+                    actuals.observe(day, cell("department"), cell("code"), cell("quantity"))
+                except (ValueError, TypeError) as exc:
+                    raise DashboardError(f"{where}: {exc}. Отчёт не сформирован.") from exc
             if not start <= day <= end:
                 stats["outside_period"] += 1
                 continue
@@ -209,7 +215,7 @@ def collect(path, start, end, *, sheet_name=None, all_departments=False,
         digest = hashlib.sha256()
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
-    return {
+    result = {
         "version": 1,
         "meta": {
             "source": path.name, "sheet": selected_sheet, "sha256": digest.hexdigest(),
@@ -225,9 +231,13 @@ def collect(path, start, end, *, sheet_name=None, all_departments=False,
         "services": [{"code": code, "name": names[code]} for code in codes],
         "coverage": sorted(coverage), "records": records, "targets": list(TARGET_CODES),
     }
+    if actuals is not None:
+        result["serviceActuals"] = actuals.export()
+    return result
 
 
-def write_dashboard(data, output, *, overwrite=False, source=None, plan_path=None, include_plan=True):
+def write_dashboard(data, output, *, overwrite=False, source=None, plan_path=None,
+                    include_plan=True, actuals_from_services=False):
     output = Path(output).resolve()
     if output.suffix.lower() != ".html":
         raise DashboardError("Выходной файл должен иметь расширение .html.")
@@ -237,10 +247,17 @@ def write_dashboard(data, output, *, overwrite=False, source=None, plan_path=Non
         raise DashboardError(f"Файл уже существует: {output}. Укажите --overwrite.")
     data = dict(data)
     data.pop("annualPlan", None)
+    if actuals_from_services and not include_plan:
+        raise DashboardError("Факт из Excel требует включённого годового плана.")
     if include_plan:
         plan_source = Path(plan_path) if plan_path is not None else BASE / "annual_plan.json"
         if plan_source.exists() or plan_path is not None:
-            data["annualPlan"] = snapshot(load_config(plan_source))
+            config = load_config(plan_source)
+            data["annualPlan"] = (snapshot_from_services(config, data) if actuals_from_services
+                                  else snapshot(config))
+        elif actuals_from_services:
+            raise DashboardError("Сначала заполните годовой план: планы и факт до начала месяца.")
+    data.pop("serviceActuals", None)
     payload = json.dumps(data, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     # Neutralize script terminators and HTML parser delimiters in source labels.
     payload = payload.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
@@ -249,7 +266,9 @@ def write_dashboard(data, output, *, overwrite=False, source=None, plan_path=Non
     css = (BASE / "dashboard_assets" / "dashboard.css").read_text(encoding="utf-8")
     css += "\n" + (BASE / "dashboard_assets" / "annual_plan.css").read_text(encoding="utf-8")
     css += "\n" + (BASE / "dashboard_assets" / "clinic_pace.css").read_text(encoding="utf-8")
-    js = (BASE / "dashboard_assets" / "annual_plan.js").read_text(encoding="utf-8")
+    css += "\n" + (BASE / "dashboard_assets" / "dashboard_refinements.css").read_text(encoding="utf-8")
+    js = (BASE / "dashboard_assets" / "dashboard_ui.js").read_text(encoding="utf-8")
+    js += "\n" + (BASE / "dashboard_assets" / "annual_plan.js").read_text(encoding="utf-8")
     js += "\n" + (BASE / "dashboard_assets" / "daily_plan_core.js").read_text(encoding="utf-8")
     js += "\n" + (BASE / "dashboard_assets" / "clinic_pace.js").read_text(encoding="utf-8")
     js += "\n" + (BASE / "dashboard_assets" / "dashboard.js").read_text(encoding="utf-8")
@@ -292,7 +311,8 @@ def launch_dashboard():
 
     root = tk.Tk()
     root.title("Ритм консультаций • HTML-дашборд")
-    root.geometry("700x430")
+    root.geometry("760x510")
+    root.minsize(700, 510)
     root.configure(padx=24, pady=22)
     path_var, status = tk.StringVar(), tk.StringVar(value="Выберите полную выгрузку услуг за месяц.")
     today = local_today()
@@ -322,6 +342,18 @@ def launch_dashboard():
     ttk.Label(plan_row, textvariable=plan_status).pack(side="left", padx=10)
     ttk.Button(plan_row, text="Годовой план…", command=lambda: edit_plan(root, BASE / "annual_plan.json", refresh_plan)).pack(side="right")
     refresh_plan()
+    use_excel_actuals = tk.BooleanVar(value=False)
+    actuals_checkbox = ttk.Checkbutton(root, text="Факт месяца из Excel: 001983 + 001984",
+                                      variable=use_excel_actuals)
+    actuals_checkbox.pack(anchor="w")
+    ttk.Label(root, text="Сумма «Кол-во» с 1-го числа по доступную дату. Факт до месяца остаётся ручным.\n"
+              "Нужна полная выгрузка месяца; сохранённый годовой план не изменится.",
+              wraplength=680).pack(anchor="w", pady=(5, 16))
+    def update_actuals_state(*_):
+        actuals_checkbox.configure(state="normal" if include_plan.get() else "disabled")
+        if not include_plan.get():
+            use_excel_actuals.set(False)
+    include_plan.trace_add("write", update_actuals_state)
     ttk.Label(root, textvariable=status, wraplength=600).pack(anchor="w", pady=(0, 16))
     messages = queue.Queue()
     def build():
@@ -335,12 +367,15 @@ def launch_dashboard():
                                             filetypes=[("HTML", "*.html")])
         if not output: return
         use_plan = include_plan.get()
+        from_excel = use_excel_actuals.get() and use_plan
         button.configure(state="disabled")
         status.set("Чтение Excel…")
         def worker():
             try:
-                data = collect(source, start, end, progress=lambda text: messages.put(("progress", text)))
-                result = write_dashboard(data, output, overwrite=True, source=source, include_plan=use_plan)
+                data = collect(source, start, end, progress=lambda text: messages.put(("progress", text)),
+                               actuals_from_services=from_excel)
+                result = write_dashboard(data, output, overwrite=True, source=source,
+                                         include_plan=use_plan, actuals_from_services=from_excel)
                 messages.put(("done", result))
             except Exception as exc:
                 messages.put(("error", str(exc)))
@@ -378,6 +413,8 @@ def main(argv=None):
     parser.add_argument("--annual-plan", type=Path, help="Сохранённый годовой план JSON; по умолчанию рядом с программой")
     parser.add_argument("--without-annual-plan", action="store_true", help="Собрать отчёт без блока годового плана")
     parser.add_argument("--edit-plan", action="store_true", help="Открыть окно ручного ввода годового плана")
+    parser.add_argument("--actuals-from-services", action="store_true",
+                        help="Факт месяца: сумма Кол-во по 001983 + 001984; предыдущие месяцы — вручную")
     args = parser.parse_args(argv)
     if args.edit_plan:
         import tkinter as tk
@@ -389,13 +426,17 @@ def main(argv=None):
     if args.gui or not argv:
         launch_dashboard(); return 0
     try:
+        if args.actuals_from_services and args.without_annual_plan:
+            raise DashboardError("Нельзя сочетать --actuals-from-services и --without-annual-plan.")
         source = args.input or latest_snapshot(args.input_dir)
         start = args.date_from or args.date_to.replace(day=1)
         output = args.output or BASE / "dashboards" / f"dashboard_{start}_{args.date_to}.html"
         data = collect(source, start, args.date_to, sheet_name=args.sheet,
-                       all_departments=args.all_departments, restore_missing=not args.no_restore_missing)
+                       all_departments=args.all_departments, restore_missing=not args.no_restore_missing,
+                       actuals_from_services=args.actuals_from_services)
         result = write_dashboard(data, output, overwrite=args.overwrite, source=source,
-                                 plan_path=args.annual_plan, include_plan=not args.without_annual_plan)
+                                 plan_path=args.annual_plan, include_plan=not args.without_annual_plan,
+                                 actuals_from_services=args.actuals_from_services)
         print(f"Готово: {result}\nУслуг: {data['meta']['totalQuantity']:,}; "
               f"сумма: {data['meta']['totalCents'] / 100:,.2f} руб.\n"
               f"Последний день с данными: {data['meta']['dataEnd']}")

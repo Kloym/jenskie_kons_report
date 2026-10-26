@@ -5,7 +5,7 @@ const escape=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&
 const count=new Intl.NumberFormat("ru-RU",{maximumFractionDigits:0});
 const decimal=new Intl.NumberFormat("ru-RU",{maximumFractionDigits:1,minimumFractionDigits:1});
 const plural=new Intl.PluralRules("ru-RU");
-const women=value=>count.format(value)+" "+({one:"женщина",few:"женщины",many:"женщин",other:"женщин"}[plural.select(value)]);
+const servicesCount=value=>count.format(value)+" "+({one:"услуга",few:"услуги",many:"услуг",other:"услуг"}[plural.select(value)]);
 const change=new Intl.NumberFormat("ru-RU",{maximumFractionDigits:2,minimumFractionDigits:2,signDisplay:"exceptZero"});
 const rate=value=>value===null?"Не задан":decimal.format(value)+"%";
 const clamp=value=>Math.max(0,Math.min(1,value));
@@ -14,15 +14,17 @@ let plan=null,selected=-1,expanded=false,motions=[];
 let stamp="",month="",period="";
 function stop(){motions.forEach(animation=>animation.cancel());motions=[];}
 function move(element,property,value,animate){
-  if(animate&&!quiet()&&window.anime){motions.push(window.anime.animate(element,{[property]:value,duration:240,ease:"outQuint"}));}
-  else element.style.transform=property==="scaleX"?`scaleX(${value})`:`translateX(${value})`;
+  window.DashboardUI.transform(element,property==="scaleX"?"scaleX("+value+")":"translateX("+value+")",animate,240);
+}
+function resize(){
+  if(expanded&&!$("annualPlan").hidden)window.DashboardUI.indicator($("annualUnits"),$("annualUnits").querySelector('[data-annual-unit="'+selected+'"]'),false);
 }
 function selectedRow(){return selected<0?plan.total:plan.departments[selected];}
 function render(animate=false,announce=false){
   if(!plan)return;
   stop();$("annualBody").style.opacity="1";$("annualBody").style.transform="none";const row=selectedRow();
   $("annualScope").textContent=row.name;$("annualReset").hidden=selected<0;
-  $("annualSummary").textContent=row.name+" · "+women(row.yearActual);
+  $("annualSummary").textContent=row.name+" · "+servicesCount(row.yearActual);
   $("annualHeadlineRate").textContent=rate(row.yearRate);
   $("annualActual").textContent=count.format(row.yearActual);$("annualYearPlan").textContent=count.format(row.yearPlan);
   $("annualTrend").textContent=row.trend===null?"Нет базы сравнения":change.format(row.trend)+" п.п.";
@@ -33,10 +35,10 @@ function render(animate=false,announce=false){
   $("annualMonthVolume").textContent="За месяц: "+count.format(row.monthActual);
   $("annualExpectedShare").textContent=row.yearPlan?rate(plan.yearFraction*100):"Не задан";
   const gap=row.gapToDate;
-  $("annualGap").textContent=!row.yearPlan?"Введите годовой план, чтобы увидеть сравнение.":gap>0?"До плана на "+stamp+": "+women(Math.ceil(gap)):gap<0?"План на "+stamp+" превышен на "+women(Math.floor(-gap)):"План на "+stamp+" выполнен.";
+  $("annualGap").textContent=!row.yearPlan?"Введите годовой план, чтобы увидеть сравнение.":gap>0?"До плана на "+stamp+": "+servicesCount(Math.ceil(gap)):gap<0?"План на "+stamp+" превышен на "+servicesCount(Math.floor(-gap)):"План на "+stamp+" выполнен.";
   $("annualGap").classList.toggle("is-behind",row.yearPlan>0&&gap>0);
   $("annualMonthTitle").textContent=month+" · на "+stamp;
-  $("annualMonthActual").textContent=women(row.monthActual);
+  $("annualMonthActual").textContent=servicesCount(row.monthActual);
   $("annualMonthPlan").textContent="План полного месяца: "+count.format(row.monthPlan);
   $("annualMonthRate").textContent=rate(row.monthRate);
   const fraction=row.yearPlan?clamp(row.yearActual/row.yearPlan):0,prior=row.yearPlan?clamp(row.previousActual/row.yearPlan):0;
@@ -45,11 +47,12 @@ function render(animate=false,announce=false){
   move($("annualFactMark"),"translateX",fraction*100+"%",animate);
   move($("annualTargetMark"),"translateX",plan.yearFraction*100+"%",false);
   $("annualFactMark").hidden=!row.yearPlan;$("annualTargetMark").hidden=!row.yearPlan;
-  $("annualRuler").setAttribute("aria-label",row.name+": выполнено "+women(row.yearActual)+" из "+count.format(row.yearPlan)+" по годовому плану. "+rate(row.yearShare)+" годового плана; "+rate(row.yearRate)+" к плану на "+stamp+".");
-  $("annualRuler").title="До "+period+": "+women(row.previousActual)+"; за месяц: "+women(row.monthActual)+". Суммарная доля годового плана: "+rate(row.yearShare)+".";
+  $("annualRuler").setAttribute("aria-label",row.name+": выполнено "+servicesCount(row.yearActual)+" из "+count.format(row.yearPlan)+" по годовому плану. "+rate(row.yearShare)+" годового плана; "+rate(row.yearRate)+" к плану на "+stamp+".");
+  $("annualRuler").title="До "+period+": "+servicesCount(row.previousActual)+"; за месяц: "+servicesCount(row.monthActual)+". Суммарная доля годового плана: "+rate(row.yearShare)+".";
   for(const button of $("annualUnits").querySelectorAll("button[data-annual-unit]"))button.setAttribute("aria-pressed",Number(button.dataset.annualUnit)===selected);
+  if(expanded&&!$("annualPlan").hidden)window.DashboardUI.indicator($("annualUnits"),$("annualUnits").querySelector('[data-annual-unit="'+selected+'"]'),animate);
   window.ClinicPace?.select(selected,animate);
-  if(announce)$("annualAnnouncement").textContent=row.name+": "+rate(row.yearRate)+" к плану на дату, "+women(row.yearActual)+".";
+  if(announce)$("annualAnnouncement").textContent=row.name+": "+rate(row.yearRate)+" к плану на дату, "+servicesCount(row.yearActual)+".";
 }
 function select(index,keyboard=false){
   if(!plan||!Number.isInteger(index)||index< -1||index>=plan.departments.length)return;
@@ -62,15 +65,14 @@ function expand(value,keyboard=false){
   if(value){
     if(!keyboard&&!quiet()&&window.anime){
       // The two marks travel on one shared scale; values are always immediately readable.
-      $("annualFactFill").style.transform="scaleX(0)";$("annualPriorFill").style.transform="scaleX(0)";
-      $("annualFactMark").style.transform="translateX(0%)";
       render(true);
       motions.push(window.anime.animate($("annualBody"),{opacity:[0,1],translateY:[8,0],duration:220,ease:"outQuint"}));
     }else{ $("annualBody").style.opacity="1";$("annualBody").style.transform="none";render(false); }
+    window.ClinicPace?.resize();resize();
   }
 }
 function table(){
-  const headings=["Подразделение","План года, женщин","До месяца: факт","До месяца: %","План месяца","За месяц: факт","За месяц: % на дату","С начала года: факт","С начала года: % на дату","Тренд, п.п."];
+  const headings=["Подразделение","План года, услуг","До месяца: факт","До месяца: %","План месяца","За месяц: факт","За месяц: % на дату","С начала года: факт","С начала года: % на дату","Тренд, п.п."];
   const html=[plan.total,...plan.departments].map(row=>'<tr><th scope="row">'+escape(row.name)+'</th>'+[count.format(row.yearPlan),count.format(row.previousActual),rate(row.priorRate),count.format(row.monthPlan),count.format(row.monthActual),rate(row.monthRate),count.format(row.yearActual),rate(row.yearRate),row.trend===null?"Нет базы":change.format(row.trend)].map(value=>'<td>'+escape(value)+'</td>').join("")+'</tr>').join("");
   $("annualSourceTable").innerHTML='<thead><tr>'+headings.map(h=>'<th scope="col">'+h+'</th>').join("")+'</tr></thead><tbody>'+html+'</tbody>';
 }
@@ -81,16 +83,22 @@ function init(data,meta){
   month=date.toLocaleDateString("ru-RU",{month:"long",timeZone:"UTC"});month=month[0].toUpperCase()+month.slice(1);
   period=["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"][date.getUTCMonth()];
   $("annualTitle").textContent="Годовой план ДОРЗ · "+plan.year;
-  $("annualStamp").textContent="На "+stamp+" "+plan.year;
-  $("annualBasis").textContent=plan.basis+" Процент на дату = факт ÷ план на дату × 100. Тренд рассчитан по неокруглённым процентам относительно начала месяца. Число женщин из годового отчёта не складывается с количеством услуг месячной выгрузки.";
+  $("annualStamp").textContent="На "+stamp+" "+plan.year+" · факт "+(plan.actualSource?.kind==="excel-services"?"из Excel":"введён вручную");
+  $("annualBasis").textContent=plan.basis+" Процент на дату = факт ÷ план на дату × 100. Тренд рассчитан по неокруглённым процентам относительно начала месяца. Все показатели плана — количество услуг 001983 + 001984. Факт месяца заменяет ручное значение, а не прибавляется к нему.";
   $("annualContext").textContent="Отдельный отчёт ДОРЗ на "+stamp+" "+plan.year+". Фильтры месячных услуг не изменяют этот отчёт; консультацию можно выбрать здесь."+(plan.asOf!==meta.dataEnd?" Дата плана отличается от последней даты выгрузки услуг.":"");
+  if(plan.actualSource?.kind==="excel-services"){
+    const source=plan.actualSource;
+    const from=new Date(source.from+"T12:00:00Z").toLocaleDateString("ru-RU",{timeZone:"UTC"});
+    $("annualContext").textContent="Факт месяца: сумма «Кол-во» по 001983 + 001984 из «"+source.file+"», лист «"+source.sheet+"», с "+from+" по "+stamp+" "+plan.year+". Факт до месяца введён вручную. Фильтры услуг этот снимок не меняют.";
+    $("annualBasis").textContent+=" По кодам: "+source.codes.map(code=>code+" — "+count.format(source.quantityByCode[code]||0)).join("; ")+".";
+  }
   $("annualWarnings").textContent=plan.warnings.join(" ");$("annualWarnings").hidden=!plan.warnings.length;
-  $("annualUnits").innerHTML=plan.departments.map((row,index)=>'<button type="button" class="annual-unit" data-annual-unit="'+index+'" aria-pressed="false"><span class="annual-unit-name">'+escape(row.name)+'</span><strong>'+rate(row.yearRate)+'</strong><span class="annual-unit-track" aria-hidden="true"><i style="transform:scaleX('+clamp((row.yearRate||0)/100)+')"></i></span><small>'+women(row.yearActual)+' с начала года</small><span class="annual-unit-change">'+(row.trend===null?"Нет базы":change.format(row.trend)+" п.п.")+'</span><span class="clinic-unit-pace" data-clinic-pace="'+index+'"></span></button>').join("");
+  $("annualUnits").innerHTML=plan.departments.map((row,index)=>'<button type="button" class="annual-unit" data-annual-unit="'+index+'" aria-pressed="false"><span class="annual-unit-name">'+escape(row.name)+'<span class="annual-selected-label" aria-hidden="true">Выбрана</span></span><strong>'+rate(row.yearRate)+'</strong><span class="annual-unit-track" aria-hidden="true"><i style="transform:scaleX('+clamp((row.yearRate||0)/100)+')"></i></span><small>'+servicesCount(row.yearActual)+' с начала года</small><span class="annual-unit-change">'+(row.trend===null?"Нет базы":change.format(row.trend)+" п.п.")+'</span><span class="clinic-unit-pace" data-clinic-pace="'+index+'"></span></button>').join("");
   $("annualUnits").addEventListener("click",event=>{const button=event.target.closest("button[data-annual-unit]");if(button)select(Number(button.dataset.annualUnit),event.detail===0);});
   $("annualReset").addEventListener("click",event=>select(-1,event.detail===0));
   $("annualToggle").addEventListener("click",event=>expand(!expanded,event.detail===0));
   table();render();setVisible(true);
 }
 function setVisible(visible){if(!plan)return;$("annualPlan").hidden=!visible;render(false);}
-window.AnnualPlan={init,setVisible,select,expand};
+window.AnnualPlan={init,setVisible,select,expand,resize};
 })();

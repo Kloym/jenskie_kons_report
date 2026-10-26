@@ -1,0 +1,112 @@
+/* Operate mode: compact overview, explicit scopes, one moving analytical focus.
+   Desktop: available width = viewport - 64px; two equal charts + 20px gutter.
+   Preserve the hospital identity and the existing blue data accent. */
+:root{--ease-out:cubic-bezier(.23,1,.32,1);--motion-fast:160ms;--motion-state:220ms}
+::selection{background:var(--accent);color:var(--surface)}
+input{caret-color:var(--accent)}
+.masthead{min-height:76px;padding-top:14px;padding-bottom:14px}
+h1{font-size:28px;letter-spacing:-.6px;margin:0 0 6px}
+.title-row{margin-bottom:14px}.period{margin-bottom:4px}.period::before{display:none}
+.notice{margin-bottom:14px;font-size:12px}
+.panel,.kpis,.annual-plan,.filter-panel{box-shadow:none;border:1px solid var(--soft-line);border-radius:16px}
+.panel{padding:20px}.kpis{padding:18px 0;margin-bottom:16px}.kpi.lead::before{display:none}
+.overview-grid{display:block;margin-bottom:22px}
+.kpi strong{font-size:28px}.kpi.lead strong{font-size:34px}.kpi small{font-size:12px}.kpi>span{font-size:13px}
+.filter-panel{padding:0 20px;margin-bottom:12px}.filter-topline{padding:10px 0}
+.filter-scope{font-size:12px;margin:12px 0 0;line-height:1.5}.filters{padding:12px 0;gap:16px}
+.filter-summary{padding:8px 0;min-height:36px}#filterHint{font-size:12px}
+.filters-toggle{display:none}.picker-trigger,.date-pair{min-height:42px;height:42px;box-shadow:none}
+.picker-trigger{max-height:42px}.date-pair input{height:38px}.tabs button{box-shadow:none!important}
+.report-jumps{display:flex;gap:20px;flex-wrap:wrap;padding:0 2px 14px;font-size:12px}
+.report-jumps a{color:var(--muted);text-underline-offset:4px;padding:4px 0}
+.report-jumps a:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+.annual-heading{padding:16px 20px;gap:18px}.annual-heading h2{font-size:16px}
+.annual-head-rate strong{font-size:26px}.annual-plan>.annual-context{margin:0;padding:0 20px 14px;font-size:12px;line-height:1.5;max-width:none}
+.scope-badge{font-size:11px;background:var(--raised);padding:5px 8px;border-radius:6px;color:var(--muted);flex:none}
+.annual-volume>strong{font-size:34px;letter-spacing:-1px}.annual-body{padding:0 20px 20px}
+.annual-units{position:relative}.selection-marker{position:absolute;left:0;top:0;width:1px;height:2px;background:var(--accent);pointer-events:none;transform-origin:0 0;border-radius:2px}
+@media(min-width:641px){.annual-units{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.annual-layout{grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:28px}}
+@media(min-width:641px) and (max-width:1100px){.annual-layout{grid-template-columns:1fr}}
+.annual-unit{border-radius:10px;border:1px solid transparent}
+.annual-plan{--clinic-selected-surface:#e7f0ff;--clinic-selected-border:#1862d3;--clinic-selected-ink:#174f9b}
+:root[data-theme=dark] .annual-plan{--clinic-selected-surface:#203e63;--clinic-selected-border:#93c5fd;--clinic-selected-ink:#dbeafe}
+.annual-unit[aria-pressed=true],.annual-unit[aria-pressed=true]:hover{box-shadow:none;background:var(--clinic-selected-surface);border-color:var(--clinic-selected-border)}
+.annual-selected-label{display:block;visibility:hidden;margin-top:3px;font-size:11px;font-weight:600;color:var(--clinic-selected-ink)}
+.annual-unit[aria-pressed=true] .annual-selected-label{visibility:visible}
+@media(hover:hover) and (pointer:fine){button.annual-unit:not(:disabled):hover{transform:none}}
+.annual-fact-mark i{box-shadow:none}.annual-fact-mark{transition:none}
+/* Keep the measuring ticks above the fill, but below both moving markers. */
+.annual-ruler{--ruler-track:#dce6f4;--ruler-tick:#355479;--ruler-target:#33465f;--ruler-outline:#ffffff}
+:root[data-theme=dark] .annual-ruler{--ruler-track:#34465e;--ruler-tick:#c4d6ed;--ruler-target:#e1edff;--ruler-outline:#1a2534}
+.annual-track{top:11px;height:16px;background:var(--ruler-track)}
+.annual-ruler-grid{top:7px;z-index:1}
+.annual-ruler-grid i{height:24px;width:2px;background:var(--ruler-tick);z-index:auto;outline:1px solid var(--ruler-outline);border-radius:1px}
+.annual-mark{z-index:2}
+.annual-target-mark i{top:0;height:38px;width:3px;background:var(--ruler-target)}
+.annual-target-mark i::before{left:-3px;width:9px;height:9px;background:var(--ruler-target)}
+.annual-fact-mark{z-index:3}
+.annual-axis{color:var(--text);font-size:12px;font-weight:500}
+.annual-axis span{position:absolute}
+.annual-axis span:nth-child(2){left:25%;transform:translateX(-50%)}
+.annual-axis span:nth-child(3){left:50%;transform:translateX(-50%)}
+.annual-axis span:nth-child(4){left:75%;transform:translateX(-50%)}
+.annual-axis span:last-child{right:0}
+.annual-volume small,.annual-head-rate span,.annual-month small,.annual-month span,.annual-unit small,.annual-unit-change{font-size:12px}
+.annual-unit-hint,.annual-context,.annual-source-note,.pace-note,.pace-source,.pace-method p{font-size:12px;line-height:1.6}
+.panel-head p,.chart-caption,.signals-panel>.fine{font-size:12px}.panel-head{margin-bottom:14px}
+.calendar-panel .panel-head{flex-wrap:wrap}.calendar-panel .panel-head>div{flex:1;min-width:220px}
+.heatmap-scroll th{min-width:34px;padding:6px 2px}.calendar-day b{display:block;font-size:12px;font-weight:600;color:var(--text)}
+.heatmap-scroll td.cell{font-size:12px;min-width:34px;height:32px;cursor:pointer}
+.heatmap-scroll .week-start{border-left:1px solid var(--control)}
+.heatmap-scroll .cell.is-focused{outline:2px solid var(--accent);outline-offset:1px}
+.heatmap-scroll td.cell.low-cell{box-shadow:inset 0 0 0 1px var(--negative)}
+.heat-pagination{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;color:var(--muted);font-size:12px}
+.heat-pagination>div{display:flex;gap:6px}.heat-pagination button{font-size:12px;min-height:32px}
+.focus-context{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px;margin-bottom:12px;background:var(--raised);border-radius:8px;font-size:12px}
+.focus-context button{font-size:12px;flex:none;min-height:32px}.day-focus{pointer-events:none;fill:var(--accent-soft)}
+.chart .hit:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;opacity:1;fill:transparent}
+.signals-panel{max-height:550px}.signal button{min-height:32px}.signals-panel #signals{max-height:280px}
+#allSignals{margin-top:12px;min-height:38px;font-size:12px}.signals-panel>.fine{line-height:1.6;margin-top:12px}
+.signal-queue{margin-bottom:20px}.queue-toolbar{display:flex;align-items:end;gap:16px;margin:16px 0}
+.queue-toolbar label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted)}
+.queue-toolbar input{width:260px}.queue-toolbar>span{margin-left:auto;font-size:12px;color:var(--muted)}
+.signal-queue-rows{max-height:480px;overflow:auto;overscroll-behavior:contain}
+.signal-row{display:grid;grid-template-columns:minmax(200px,1fr) 100px 180px 80px;gap:20px;align-items:center;width:100%;padding:14px 8px;text-align:left;background:transparent;border:0;border-bottom:1px solid var(--soft-line);border-radius:0}
+.signal-row strong{font-size:13px;font-weight:550}.signal-row small{display:block;font-size:12px;color:var(--muted);margin-top:4px}.signal-row>span:last-child{color:var(--negative);text-align:right}.signal-row:hover{background:var(--raised)}
+#moreSignals{display:block;margin:16px auto 0}.services-signal-context{padding:12px 16px;margin:8px 0;background:var(--raised);font-size:12px;line-height:1.6;border-radius:10px;color:var(--text)}
+.signal-label{border:0;background:none;color:var(--negative);font-size:12px;padding:4px;min-height:32px}
+#detailTable .doctor-link{min-height:32px}.table-empty{font-size:13px;line-height:1.6;color:var(--muted);padding:20px 0}
+.fine,.kpi small{font-size:12px}.picker-menu[data-instant=true]{animation:none}
+#tooltip{left:0;top:0;pointer-events:none;transition:none;max-width:min(360px,calc(100vw - 16px))}
+html[data-input=keyboard] *,html[data-input=keyboard] *::before,html[data-input=keyboard] *::after{animation:none!important;transition:none!important}
+html[data-input=keyboard] button:active{transform:none}
+@media(min-width:641px) and (max-width:1100px){.scope-badge{display:none}.filters{grid-template-columns:1fr 1fr}.dates-field{grid-column:1/-1}.signal-row{grid-template-columns:minmax(180px,1fr) 90px 140px 65px;gap:12px}}
+@media(max-width:640px){
+ .masthead{min-height:70px;padding:14px 16px}.brand span{font-size:12px}.title-row{margin-bottom:12px}h1{font-size:24px}.period{font-size:12px}
+ .notice{font-size:12px}.kpis{padding:16px 0;row-gap:18px;margin-bottom:14px}.kpi>span,.kpi small{font-size:12px}.kpi strong{font-size:23px}.kpi.lead strong{font-size:28px}.kpi:nth-child(2) strong{font-size:20px}
+ .kpi,.kpi:first-child,.kpi:nth-child(3){padding:0 12px}.filter-panel{padding:0 14px}.filter-topline{padding:8px 0;gap:8px}.tabs button{font-size:12px}.tabs span{font-size:11px}
+ .filters-toggle{display:block;width:100%;background:transparent;border:0;text-align:left;padding:10px 0;min-height:44px}.filter-summary{border:0;padding-top:0}.filter-scope{margin-top:0}.filters{grid-template-columns:1fr;padding-top:12px}
+ .date-shortcuts button{min-height:36px;font-size:12px}.report-jumps{gap:16px;padding-bottom:12px}.report-jumps a{min-height:36px;display:flex;align-items:center;gap:4px}
+ .annual-heading{padding:14px;gap:12px;flex-wrap:wrap}.scope-badge{display:none}.annual-heading h2{font-size:15px}.annual-plan>.annual-context{padding:0 14px 12px;font-size:12px}.annual-body{padding:0 14px 16px}
+ .analysis-grid .signals-panel{order:-1;max-height:none}.signals-panel #signals{max-height:160px}.signals-panel>.fine{font-size:12px}
+ .panel-head p,.chart-caption,.unit{font-size:12px}.heatmap-scroll th:first-child,.heatmap-scroll td:first-child{min-width:150px;width:150px}.heatmap-scroll th,.heatmap-scroll td.cell{min-width:36px;height:36px}
+ .heat-pagination button{min-height:44px}.focus-context{align-items:start;flex-wrap:wrap}.focus-context button{min-height:36px}
+ .queue-toolbar{flex-wrap:wrap;gap:12px}.queue-toolbar label{flex:1;min-width:130px}.queue-toolbar input{width:100%}.queue-toolbar>span{width:100%;margin:0}
+ .signal-row{grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;min-height:90px}.signal-row>span:nth-child(3){grid-column:1;grid-row:2}.signal-row>span:last-child{grid-column:2;grid-row:2}.signal-row>span:nth-child(2){text-align:right}.signal-row strong{font-size:13px}
+ .signal-queue .panel-head{flex-wrap:wrap}.signal-queue .panel-head button{min-height:44px}.pace-chart{scroll-padding-inline:16px}.pace-chart text{font-size:14px}
+ .option-text strong,.option-text small,.table-toolbar span,footer{font-size:12px}.table-toolbar{flex-wrap:wrap}.table-toolbar input{width:100%}
+ .chart-caption{line-height:1.6}.details-head button,.signal-label{min-height:44px}
+}
+/* A single blue lead metric restores the overview's visual anchor. */
+#summaryKpis{--summary-blue:#1862d3;--summary-ink:#ffffff;--summary-muted:#e1edff;--summary-surface:#f5f9ff;background:var(--summary-surface);padding:0;row-gap:0}
+:root[data-theme=dark] #summaryKpis{--summary-blue:#174f9b;--summary-surface:#202934}
+#summaryKpis .kpi{padding:20px 28px;display:flex;flex-direction:column;justify-content:center}
+#summaryKpis .kpi.lead{background:var(--summary-blue);color:var(--summary-ink)}
+#summaryKpis .kpi.lead strong{color:var(--summary-ink)}
+#summaryKpis .kpi.lead>span,#summaryKpis .kpi.lead small{color:var(--summary-muted)}
+#summaryKpis .kpi:nth-child(2){border-left:0}
+@media(max-width:900px){#summaryKpis .kpi{padding:18px 20px}#summaryKpis .kpi:nth-child(n+3){border-top:1px solid var(--line)}}
+@media(max-width:640px){#summaryKpis .kpi{padding:16px 12px}}
+@media print{#summaryKpis{background:white}#summaryKpis .kpi.lead{background:white!important}#summaryKpis .kpi.lead strong,#summaryKpis .kpi.lead>span,#summaryKpis .kpi.lead small{color:black!important}.annual-unit[aria-pressed=true]{border-color:black}.annual-selected-label{color:black}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+@media print{.report-jumps,.heat-pagination,.filters-toggle,#allSignals,#closeSignals,.queue-toolbar,#moreSignals,.focus-context{display:none!important}.signal-queue-rows{max-height:none;overflow:visible}.scope-badge{display:none}.panel,.kpis,.annual-plan{box-shadow:none}.kpis{break-inside:avoid}}

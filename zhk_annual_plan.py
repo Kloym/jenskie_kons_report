@@ -158,7 +158,7 @@ def edit_plan(parent, path, on_saved=None):
         window.transient(parent)
     window.configure(padx=24, pady=22)
     ttk.Label(window, text="Годовой план ДОРЗ", font=("", 18)).pack(anchor="w")
-    ttk.Label(window, text="Перенесите четыре показателя по каждому подразделению из PDF. Количество — женщин.", wraplength=920).pack(anchor="w", pady=(7, 16))
+    ttk.Label(window, text="Перенесите четыре показателя по каждому подразделению из PDF. Количество — услуги 001983 + 001984.", wraplength=920).pack(anchor="w", pady=(7, 16))
     controls = ttk.Frame(window); controls.pack(fill="x")
     ttk.Label(controls, text="Дата отчёта").pack(side="left")
     date_var = tk.StringVar(value=date.fromisoformat(initial["asOf"]).strftime("%d.%m.%Y"))
@@ -203,7 +203,7 @@ def edit_plan(parent, path, on_saved=None):
         try:
             plan = snapshot(read_inputs()); total = plan["total"]
             rate = "план года не задан" if total["yearRate"] is None else f"{total['yearRate']:.1f}% к плану на дату; {total['yearShare']:.1f}% годового плана"
-            preview.set((f"Женщин с начала года: {total['yearActual']:,}; " + rate).replace(",", " ").replace(".", ","))
+            preview.set((f"Услуг с начала года: {total['yearActual']:,}; " + rate).replace(",", " ").replace(".", ","))
             notes.set(" ".join(plan["warnings"]) or "Проценты и тренд рассчитаны автоматически. Факт с начала года = факт до месяца + факт месяца.")
         except AnnualPlanError as exc:
             preview.set("Проверьте заполнение"); notes.set(str(exc))

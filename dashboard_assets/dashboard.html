@@ -27,9 +27,15 @@
 </div>
 <button id="printButton" class="icon-button" aria-label="Распечатать отчёт" title="Распечатать"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8V3h12v5M6 17H3V9h18v8h-3M6 14h12v7H6z"/></svg></button></div></header>
 <main id="main">
-<div class="title-row"><div><div class="period" id="periodLabel"></div><h1>Услуги за месяц</h1><p id="scopeText">Обрабатываем данные отчёта…</p></div><button class="primary" id="exportButton"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5"/></svg>Скачать CSV</button></div>
+<div class="title-row"><div><h1>Услуги за месяц</h1><div class="period" id="periodLabel"></div><p id="scopeText">Обрабатываем данные отчёта…</p></div><button class="primary" id="exportButton"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5"/></svg>Скачать CSV</button></div>
 <div class="notice" id="coverageNotice" role="status"></div>
-<section class="filter-panel" aria-label="Фильтры отчёта"><div class="filter-topline"><nav class="tabs" role="tablist" aria-label="Группы услуг"><button role="tab" id="targetTab" aria-selected="true" aria-controls="annualPlan report" data-tab="target">Репродуктивное здоровье <span>001983 · 001984</span></button><button role="tab" id="allTab" aria-selected="false" aria-controls="report" tabindex="-1" data-tab="all">Все услуги <span id="serviceCount"></span></button></nav><button id="resetButton" class="reset"><svg viewBox="0 0 24 24" aria-hidden="true" class=""><path d="M3 11a9 9 0 1 1 2.5 7M3 4v7h7"/></svg>Сбросить всё</button></div><div class="filters"><div class="filter-field department-field" id="departmentField" >
+<div class="kpis" id="summaryKpis" aria-label="Итоги выбранных услуг" aria-live="polite">
+<div class="kpi lead"><span>Выполнено услуг</span><strong id="quantityKpi">…</strong><small id="quantityNote"></small></div>
+<div class="kpi"><span>Сумма услуг</span><strong id="amountKpi">…</strong><small>Тариф × количество, ₽</small></div>
+<div class="kpi"><span>Врачи с услугами</span><strong id="doctorsKpi">…</strong><small id="doctorNote"></small></div>
+<div class="kpi"><span>Среднее за активный день</span><strong id="dailyKpi">…</strong><small id="dailyNote"></small></div>
+</div>
+<section class="filter-panel" aria-label="Фильтры отчёта"><div class="filter-topline"><nav class="tabs" role="tablist" aria-label="Группы услуг"><button role="tab" id="targetTab" aria-selected="true" aria-controls="annualPlan report" data-tab="target">Репродуктивное здоровье <span>001983 · 001984</span></button><button role="tab" id="allTab" aria-selected="false" aria-controls="report" tabindex="-1" data-tab="all">Все услуги <span id="serviceCount"></span></button></nav><button id="resetButton" class="reset"><svg viewBox="0 0 24 24" aria-hidden="true" class=""><path d="M3 11a9 9 0 1 1 2.5 7M3 4v7h7"/></svg>Сбросить всё</button></div><button id="filtersToggle" class="filters-toggle" aria-expanded="false" aria-controls="filterControls">Настроить фильтры</button><div id="filterControls"><p class="filter-scope">Фильтры меняют итоги услуг, графики, календарь и сигналы. План ДОРЗ — отдельный срез.</p><div class="filters"><div class="filter-field department-field" id="departmentField" >
 <label id="departmentCaption" for="departmentTrigger">Подразделение</label>
 <div class="search-picker" id="departmentPicker">
 <input type="hidden" id="department" value="">
@@ -53,18 +59,20 @@
 <div class="picker-menu" id="serviceMenu" role="dialog" aria-label="Выбор: услуга" hidden>
 <div class="picker-search-row"><input id="serviceQuery" type="search" role="combobox" aria-label="Найти по коду или названию" aria-controls="serviceList" aria-expanded="true" aria-autocomplete="list" placeholder="Найти по коду или названию" autocomplete="off"><button type="button" id="serviceClose" class="picker-close" aria-label="Закрыть список: услуга">×</button></div>
 <ul class="picker-list" id="serviceList" role="listbox" aria-label="Услуга"></ul><p class="picker-status" id="serviceStatus" role="status"></p>
-</div></div></div></div><div class="filter-summary"><span id="filterHint">Весь период · все врачи</span><div id="activeFilters" aria-label="Выбранные фильтры"></div></div></section>
+</div></div></div></div></div><div class="filter-summary"><span id="filterHint">Весь период · все врачи</span><div id="activeFilters" aria-label="Выбранные фильтры"></div></div></section>
+<nav class="report-jumps" aria-label="Разделы отчёта"><a href="#calendarPanel">Календарь</a><a href="#signalsPanel">Сигналы <span id="jumpSignalCount"></span></a><a href="#detailsPanel">Таблица результатов</a></nav>
 <section id="annualPlan" class="annual-plan" aria-labelledby="annualTitle" hidden>
   <div class="annual-heading">
     <div class="annual-identity"><h2 id="annualTitle">Годовой план ДОРЗ</h2><p><span id="annualStamp"></span><span class="annual-dot" aria-hidden="true">·</span><span id="annualSummary"></span></p></div>
-    <div class="annual-head-rate"><strong id="annualHeadlineRate"></strong><span>к плану на дату</span></div>
+    <span class="scope-badge">Отдельный срез ДОРЗ</span><div class="annual-head-rate"><strong id="annualHeadlineRate"></strong><span>к плану на дату</span></div>
     <button id="annualToggle" class="annual-toggle" aria-expanded="false" aria-controls="annualBody"><span id="annualToggleLabel">Раскрыть план</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
   </div>
+  <p class="annual-context" id="annualContext"></p>
   <div id="annualBody" class="annual-body" hidden>
     <div class="annual-layout">
       <div class="annual-main">
         <div class="annual-scope-line"><h3 id="annualScope">Всё учреждение</h3><button id="annualReset" class="annual-back" hidden>Всё учреждение ↗</button></div>
-        <div class="annual-volume"><strong id="annualActual"></strong><span>из <b id="annualYearPlan"></b><small>женщин по годовому плану</small></span></div>
+        <div class="annual-volume"><strong id="annualActual"></strong><span>из <b id="annualYearPlan"></b><small>услуг по годовому плану</small></span></div>
         <div class="annual-change"><span id="annualTrend"></span><span id="annualTrendPeriod"></span></div>
         <div class="annual-ruler" id="annualRuler" role="img" aria-label="Выполнение годового плана">
           <div class="annual-track"><div id="annualFactFill" class="annual-fill"></div><div id="annualPriorFill" class="annual-fill annual-fill-prior"></div></div>
@@ -103,7 +111,6 @@
   <p id="clinicPaceAnnouncement" class="sr-only" role="status" aria-live="polite"></p>
 </section>
 
-    <p class="annual-context" id="annualContext"></p>
     <details class="annual-source"><summary>Исходные показатели и расчёт</summary><p id="annualBasis"></p><div class="annual-source-scroll" tabindex="0" aria-label="Исходные показатели годового плана"><table id="annualSourceTable"></table></div><p id="annualWarnings" class="annual-source-note"></p></details>
     <p id="annualAnnouncement" class="sr-only" role="status" aria-live="polite"></p>
   </div>
@@ -111,26 +118,25 @@
 
 <div id="filterError" class="error" hidden role="alert"></div>
 <div id="report" role="tabpanel" aria-labelledby="targetTab">
-<div class="overview-grid"><div class="kpis" aria-live="polite">
-<div class="kpi lead"><span>Выполнено услуг</span><strong id="quantityKpi">…</strong><small id="quantityNote"></small></div>
-<div class="kpi"><span>Сумма услуг</span><strong id="amountKpi">…</strong><small>Тариф × количество, ₽</small></div>
-<div class="kpi"><span>Врачи с услугами</span><strong id="doctorsKpi">…</strong><small id="doctorNote"></small></div>
-<div class="kpi"><span>Среднее за активный день</span><strong id="dailyKpi">…</strong><small id="dailyNote"></small></div>
-</div>
+<div class="overview-grid">
 <div class="chart-grid">
 <section class="panel"><div class="panel-head"><div><h2>Количество по дням</h2><p id="quantityChartNote"></p></div><span class="unit">услуг</span></div><div class="chart" id="quantityChart"></div><div class="chart-caption"><span class="legend"><i class="swatch"></i>Выполнено</span><span class="legend"><i class="swatch alert-swatch"></i>Снижение относительно прошлых таких же дней недели</span></div></section>
 <section class="panel"><div class="panel-head"><div><h2>Сумма по дням</h2><p id="amountChartNote"></p></div><span class="unit">₽</span></div><div class="chart" id="amountChart"></div><div class="chart-caption" id="amountCaption"></div></section>
 </div>
 </div><div class="analysis-grid">
-<section class="panel calendar-panel"><div class="panel-head"><div><h2>Календарь врачей</h2><p>Дни недели в колонках. Точная дата при наведении. Фамилия открывает отчёт врача.</p></div><select id="heatMetric" aria-label="Показатель календаря"><option value="quantity">Количество</option><option value="amount">Сумма, ₽</option></select></div>
-<div class="heatmap-scroll" tabindex="0" aria-label="Прокручиваемая таблица активности врачей"><table id="heatmap"></table></div>
+<section class="panel calendar-panel" id="calendarPanel" tabindex="-1"><div class="panel-head"><div><h2>Календарь врачей</h2><p>Выберите ячейку для разбора услуг за день. С клавиатуры: стрелки, Home / End и Enter.</p></div><select id="heatMetric" aria-label="Показатель календаря"><option value="quantity">Количество</option><option value="amount">Сумма, ₽</option></select></div>
+<div id="focusContext" class="focus-context" hidden><span id="focusLabel"></span><button id="clearFocus">Убрать выделение</button></div><div class="heatmap-scroll" aria-label="Календарь активности врачей"><table id="heatmap" role="grid" aria-label="Врачи и даты. Стрелки — переход, Enter — услуги"></table></div><div class="heat-pagination"><span id="heatCount"></span><div><button id="heatPrev" aria-label="Предыдущие врачи">Назад</button><button id="heatNext" aria-label="Следующие врачи">Далее</button></div></div>
 <div class="chart-caption heat-legend"><span>Меньше <i class="heat-scale"></i> Больше</span><span>0 = услуг нет · · = нет сведений об активности · ↓ = снижение</span></div></section>
-<aside class="panel signals-panel"><div class="panel-head"><div><h2>Точки внимания</h2><p>Сигналы для проверки</p></div><span class="count" id="signalCount">0</span></div>
+<aside class="panel signals-panel" id="signalsPanel" tabindex="-1"><div class="panel-head"><div><h2>Точки внимания</h2><p>Сигналы для проверки</p></div><span class="count" id="signalCount">0</span></div>
 <label class="threshold-label" for="threshold">Порог снижения</label><select id="threshold"><option value="0.4">Более 40% от базы</option><option value="0.25">Более 25% от базы</option><option value="0.5">Более 50% от базы</option></select>
-<div id="signals" tabindex="0" role="region" aria-label="Список сигналов снижения"></div><p class="fine">База: медиана до четырёх предыдущих таких же дней недели, минимум два наблюдения. Только дни с любыми услугами врача. Текущий день исключён.</p></aside>
+<div id="signals" role="region" aria-label="Последние сигналы снижения"></div><button id="allSignals" aria-expanded="false" aria-controls="signalQueue">Все сигналы</button><p class="fine">База: медиана до четырёх предыдущих таких же дней недели, минимум два наблюдения. Только дни с любыми услугами врача. Текущий день исключён.</p></aside>
 </div>
+<section id="signalQueue" class="panel signal-queue" aria-labelledby="signalQueueTitle" hidden>
+<div class="panel-head"><div><h2 id="signalQueueTitle" tabindex="-1">Все сигналы</h2><p>Наблюдения об объёме, не оценка качества работы. Выберите строку для разбора услуг.</p></div><button id="closeSignals">Свернуть список</button></div>
+<div class="queue-toolbar"><label>Найти врача<input id="signalSearch" type="search" placeholder="Фамилия врача"></label><label>Порядок<select id="signalSort"><option value="drop">Снижение ↓</option><option value="date">Дата ↓</option></select></label><span id="signalQueueCount" role="status"></span></div>
+<div id="signalQueueRows" class="signal-queue-rows"></div><button id="moreSignals" hidden>Показать ещё 40</button></section>
 <div class="patterns-grid"><section class="panel"><div class="panel-head"><div><h2>Ритм недели</h2><p>Среднее количество за день с любыми услугами врача</p></div><span class="unit">услуг / день</span></div><div id="weekdayChart"></div></section><section class="panel"><div class="panel-head"><div><h2>Структура объёма</h2><p>Какие услуги формируют результат</p></div><span class="unit">доля количества</span></div><div id="mixChart"></div></section></div>
-<section class="panel details-panel">
+<section class="panel details-panel" id="detailsPanel" tabindex="-1">
 <div class="panel-head details-head"><div><h2 id="detailTitle">Результаты врачей</h2><p id="detailSubtitle"></p></div><div class="segment" role="group" aria-label="Детализация"><button data-detail="doctors" aria-pressed="true">Врачи</button><button data-detail="services" aria-pressed="false">Услуги</button><button data-detail="days" aria-pressed="false">По дням</button></div></div>
 <div class="table-toolbar"><input type="search" id="tableSearch" aria-label="Поиск в таблице" placeholder="Найти в таблице"><span id="tableCount"></span></div>
 <div class="table-scroll" tabindex="0" aria-label="Таблица результатов"><table id="detailTable"></table></div><button id="moreButton" hidden>Показать ещё</button>
@@ -139,20 +145,20 @@
 <footer><span id="sourceLabel"></span><span>Локальный отчёт · без данных пациентов</span></footer><button class="mobile-method" id="mobileMethod">Как считаем показатели</button>
 <noscript><p class="error">Включите JavaScript, чтобы видеть расчёты и графики. Данные находятся внутри HTML, интернет не требуется.</p></noscript>
 </main>
-<dialog id="methodDialog"><div class="dialog-heading"><h2>Как устроен отчёт</h2><button id="closeMethod" aria-label="Закрыть">Закрыть</button></div>
+<dialog id="methodDialog" aria-labelledby="methodTitle"><div class="dialog-heading"><h2 id="methodTitle">Как устроен отчёт</h2><button id="closeMethod" aria-label="Закрыть">Закрыть</button></div>
 <div class="method-content">
 <h3>Количество и сумма</h3><p>Количество = сумма колонки «Кол-во». Сумма = «Тариф» × «Кол-во» для каждой строки с округлением до копеек, затем сложение. Повторяющиеся строки суммируются, а не удаляются как дубликаты.</p>
 <h3>Подразделения</h3><p>Используются правила месячного отчёта проекта, включая объединение ЖК по дате реорганизации. На вкладке «Все услуги» показаны все коды в выбранных подразделениях.</p>
 <h3>Снижения</h3><p>Для каждой даты берём до четырёх предыдущих таких же дней недели внутри выбранного периода. Минимум два дня должны иметь любые услуги того же врача. Если количество или сумма ниже медианы более чем на выбранный порог, появляется сигнал. Это наблюдение об объёме, не оценка качества работы и не выполнение плана. Расписания, отпусков и планов в выгрузке нет.</p>
 <h3>Пустые дни и тарифы</h3><p>На дневных графиках дни без услуг до последней даты выгрузки показаны нулём. Даты после неё остаются без данных. В расчёте медианы и в календаре отсутствие активности по-прежнему отличается от нулевого объёма выбранных услуг. В календаре «·» означает, что у врача не найдено ни одной услуги за день, и график работы неизвестен. Текущий день не участвует в поиске снижений. Пустой тариф восстанавливается только по единственной положительной цене того же кода в том же месяце; явно нулевой тариф сохраняется и отмечается.</p>
 <h3>Источник и проверка</h3><div id="qualityDetails"></div>
-<p>Файл содержит агрегаты по врачу, дате, подразделению и коду услуги. ФИО пациентов, полисы, диагнозы и идентификаторы пациентов не включены. Все фильтры пересчитывают весь отчёт. CSV выгружает дневные агрегаты в текущем выборе.</p></div></dialog>
+<p>Файл содержит агрегаты по врачу, дате, подразделению и коду услуги. ФИО пациентов, полисы, диагнозы и идентификаторы пациентов не включены. Фильтры услуг пересчитывают месячную аналитику. Годовой план и дневной ориентир имеют отдельный выбор консультации; их источник и дата указаны в блоке плана. CSV выгружает дневные агрегаты в текущем выборе.</p></div></dialog>
 <dialog id="doctorServicesDialog" aria-labelledby="doctorServicesTitle" aria-describedby="doctorServicesName doctorServicesScope">
   <header class="services-heading">
     <div><h2 id="doctorServicesTitle" tabindex="-1">Услуги врача</h2><p id="doctorServicesName" class="services-doctor"></p><p id="doctorServicesUnits" class="services-units"></p></div>
     <button id="closeDoctorServices" class="services-close" aria-label="Закрыть расшифровку услуг"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
   </header>
-  <p id="doctorServicesScope" class="services-scope"></p>
+  <p id="doctorServicesScope" class="services-scope"></p><p id="doctorSignalContext" class="services-signal-context" hidden></p>
   <div class="services-totals"><div><span>Выполнено услуг</span><strong id="doctorServicesTotalQ"></strong></div><div><span>На сумму, ₽</span><strong id="doctorServicesTotalM"></strong></div></div>
   <div class="services-toolbar"><label class="services-search"><span class="sr-only">Найти услугу в расшифровке</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><input type="search" id="doctorServicesSearch" placeholder="Код или название услуги" autocomplete="off"></label><select id="doctorServicesSort" aria-label="Порядок услуг в расшифровке"><option value="quantity">По количеству</option><option value="amount">По сумме</option><option value="code">По коду</option></select></div>
   <div id="doctorServicesScroll" class="services-scroll" tabindex="0" aria-label="Все услуги выбранного врача"><table class="services-table"><thead><tr><th scope="col">Код и услуга</th><th scope="col">Количество<span>и доля</span></th><th scope="col">Сумма, ₽</th></tr></thead><tbody id="doctorServicesBody"></tbody><tfoot><tr><th scope="row">Итого по показанным услугам</th><td id="doctorServicesSubtotalQ"></td><td id="doctorServicesSubtotalM"></td></tr></tfoot></table></div>

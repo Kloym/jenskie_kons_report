@@ -16,7 +16,10 @@ const weekdayName = value => ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"][
 const calendarDate = value => weekdayName(value)+", "+fullDate(value);
 const sum = (rows, index) => rows.reduce((total,r) => total + r[index], 0);
 const median = values => {const a=[...values].sort((x,y)=>x-y);const i=Math.floor(a.length/2);return a.length%2?a[i]:(a[i-1]+a[i])/2;};
-const state = {tab:"target",detail:"doctors",sort:"quantity",desc:true,limit:25,view:null};
+const state = {tab:"target",detail:"doctors",sort:"quantity",desc:true,limit:25,heatPage:0,signalLimit:40,signalDoctor:null,signalDay:null,focus:null,view:null};
+const UI=window.DashboardUI;
+let aggregateCache=null,pickerCache=new Map();
+const doctorKeys=D.doctors.map(value=>String(value).toLocaleLowerCase("ru-RU").replace(/ё/g,"е").trim());
 const datesBetween = (start,end) => {
   const dates=[];const cursor=dateObj(start);
   while(cursor.toISOString().slice(0,10)<=end && dates.length<372){dates.push(cursor.toISOString().slice(0,10));cursor.setUTCDate(cursor.getUTCDate()+1);}
@@ -32,8 +35,10 @@ function aggregate() {
   if(!start||!end||start>end||start<D.meta.start||end>D.meta.end){
     throw new Error("Выберите корректные даты внутри периода "+dayText(D.meta.start)+" – "+dayText(D.meta.end));
   }
+  const cacheKey=JSON.stringify([start,end,dep,doctor,search,state.tab,$("threshold").value]);
+  if(aggregateCache?.key===cacheKey)return aggregateCache.value;
   const dates=datesBetween(start,end);
-  const scoped=D.records.filter(r=>r[0]>=start&&r[0]<=end&&(dep===""||r[1]===Number(dep))&&(!doctor||normalize(D.doctors[r[2]])===doctor));
+  const scoped=D.records.filter(r=>r[0]>=start&&r[0]<=end&&(dep===""||r[1]===Number(dep))&&(!doctor||doctorKeys[r[2]]===doctor));
   const selected=scoped.filter(r=>state.tab==="target"?D.targets.includes(D.services[r[3]].code):
     !search||D.services[r[3]].code===search);
   const total=bucket(),doctors=new Map(),services=new Map(),days=new Map(dates.map(day=>[day,{...bucket(),day,activity:0}]));
@@ -53,11 +58,12 @@ function aggregate() {
   }
   const threshold=Number($("threshold").value);
   function signalFor(series,activity,id=null){
-    const signals=[];
+    const signals=[],history=Array.from({length:7},()=>[]);
     for(let i=0;i<dates.length;i++){
-      const day=dates[i];if(day>=D.meta.today||!activity(day))continue;
-      const previous=dates.slice(0,i).filter(x=>weekday(x)===weekday(day)&&activity(x)).slice(-4);
-      if(previous.length<2)continue;
+      const day=dates[i];if(!activity(day))continue;
+      const previous=[...history[weekday(day)]];
+      history[weekday(day)].push(day);if(history[weekday(day)].length>4)history[weekday(day)].shift();
+      if(day>=D.meta.today||previous.length<2)continue;
       const current=series(day);
       const bq=median(previous.map(x=>series(x).quantity)),ba=median(previous.map(x=>series(x).amount));
       const quantityDrop=bq>0 ? 1-current.quantity/bq : 0;
@@ -77,7 +83,8 @@ function aggregate() {
   }
   const dailySignals=signalFor(day=>days.get(day),day=>days.get(day).activity>0);
   signals.sort((a,b)=>b.day.localeCompare(a.day)||b.drop-a.drop);
-  return {dates,start,end,scoped,selected,total,doctors,services,days,active,signals,dailySignals};
+  const value={dates,start,end,scoped,selected,total,doctors,services,days,active,signals,dailySignals};
+  aggregateCache={key:cacheKey,value};return value;
 }
 function niceStep(max,integer){
   const raw=max/4||1;const pow=10**Math.floor(Math.log10(raw));
@@ -94,7 +101,7 @@ function chart(id,view,metric,type){
   const max=Math.max(0,...vals.filter(x=>x!==null)),step=niceStep(max,metric==="quantity"),ymax=Math.max(step,Math.ceil((max*1.08)/step)*step);
   const x=i=>left+(i+.5)*w/n,y=value=>top+h-value/ymax*h;
   const low=new Set(view.dailySignals.filter(s=>metric==="quantity"?s.quantityDrop>Number($("threshold").value):s.amountDrop>Number($("threshold").value)).map(s=>s.day));
-  let body="";
+  let body='<rect class="day-focus" data-focus-cursor x="0" y="'+top+'" width="'+w/n+'" height="'+h+'" visibility="hidden"/>';
   const tick=v=>metric==="quantity"?formatQ(v):(v>=100000?formatQ(v/100000)+" тыс.":formatQ(v/100));
   const count=Math.ceil(ymax/step);
   for(let i=0;i<=count;i++){const val=i*step,yy=y(val);body+='<line class="gridline" x1="'+left+'" x2="'+(width-right)+'" y1="'+yy+'" y2="'+yy+'"/><text x="'+(left-8)+'" y="'+(yy+4)+'" text-anchor="end">'+E(tick(val))+'</text>';}
@@ -114,9 +121,26 @@ function chart(id,view,metric,type){
   for(let i=0;i<n;i++){
     const day=view.dates[i],b=view.days.get(day);
     const tip=calendarDate(day)+"\n"+(day>D.meta.dataEnd?"За пределами выгрузки: данных нет":formatQ(b.quantity)+" услуг · "+formatM(b.amount)+" ₽"+(!b.activity?"\nУслуг в выгрузке нет; график работы неизвестен":""))+(day===D.meta.today?"\nТекущий день: данные могут быть неполными":"");
-    body+='<rect class="hit" tabindex="0" role="img" aria-label="'+E(tip)+'" data-tip="'+E(tip)+'" x="'+(left+i*w/n)+'" y="'+top+'" width="'+w/n+'" height="'+h+'"/>';
+    body+='<rect class="hit" tabindex="'+(i===0?'0':'-1')+'" role="button" data-chart-day="'+day+'" aria-label="'+E(tip)+'" data-tip="'+E(tip)+'" x="'+(left+i*w/n)+'" y="'+top+'" width="'+w/n+'" height="'+h+'"/>';
   }
-  el.innerHTML='<svg viewBox="0 0 '+width+' '+height+'" role="img" aria-label="'+(metric==="quantity"?"Количество услуг":"Сумма услуг")+' по дням"><title>Дневная динамика. Точные значения доступны в таблице «По дням».</title>'+body+'</svg>';
+  el.innerHTML='<svg viewBox="0 0 '+width+' '+height+'" role="group" aria-label="'+(metric==="quantity"?"Количество услуг":"Сумма услуг")+' по дням"><title>Дневная динамика. Точные значения доступны в таблице «По дням».</title>'+body+'</svg>';
+  updateChartFocus(false);
+}
+function updateChartFocus(animate=true){
+  for(const id of ['quantityChart','amountChart']){
+    const chart=$(id),cursor=chart.querySelector('[data-focus-cursor]');if(!cursor)continue;
+    const mark=chart.querySelector('[data-chart-day="'+state.focus?.day+'"]');
+    cursor.setAttribute('visibility',mark?'visible':'hidden');if(mark)UI.transform(cursor,'translateX('+mark.getAttribute('x')+'px)',animate);
+  }
+}
+function focusDay(day,doctorId=null,animate=true){
+  state.focus={day,doctorId};$('focusContext').hidden=false;
+  $('focusLabel').textContent=(doctorId===null?'Все врачи':D.doctors[doctorId])+' · '+fullDate(day);
+  updateChartFocus(animate);
+  for(const cell of $('heatmap').querySelectorAll('[data-heat-day]')){
+    const selected=cell.dataset.heatDay===day&&(doctorId===null||Number(cell.dataset.heatDoctor)===doctorId);
+    cell.classList.toggle('is-focused',selected);cell.setAttribute('aria-selected',selected);
+  }
 }
 function renderKpis(v){
   $("quantityKpi").textContent=formatQ(v.total.quantity);
@@ -134,38 +158,70 @@ function renderKpis(v){
   $("amountCaption").textContent="Средняя стоимость услуги: "+(v.total.quantity?formatM(v.total.amount/v.total.quantity)+" ₽":"нет услуг")+" · Сумма рассчитана по строкам выгрузки";
   $("scopeText").textContent=($("doctor").value.trim()||"Все врачи")+" · "+($("department").value===""?D.meta.scope:D.departments[Number($("department").value)]);
 }
+function heatEntries(v){
+  const metric=$("heatMetric").value;
+  return [...v.doctors.values()].sort((a,b)=>b[metric]-a[metric]||a.name.localeCompare(b.name,"ru"));
+}
 function renderHeat(v){
-  const metric=$("heatMetric").value,entries=[...v.doctors.values()].sort((a,b)=>b[metric]-a[metric]||a.name.localeCompare(b.name,"ru"));
-  const max=Math.max(1,...entries.flatMap(d=>[...d.daily.values()].map(b=>b[metric])));
-  let html='<thead><tr><th scope="col">Врач</th>'+v.dates.map(day=>'<th scope="col" tabindex="0" class="calendar-day '+([0,6].includes(weekday(day))?"weekend":"")+'" aria-label="'+E(calendarDate(day))+'" title="'+E(calendarDate(day))+'" data-tip="'+E(calendarDate(day))+'">'+weekdayName(day)+'</th>').join("")+'<th scope="col">Итого</th></tr></thead><tbody>';
-  for(const d of entries){
+  const metric=$("heatMetric").value,entries=heatEntries(v),size=40;
+  state.heatPage=Math.max(0,Math.min(state.heatPage,Math.ceil(entries.length/size)-1));
+  const shown=entries.slice(state.heatPage*size,(state.heatPage+1)*size);
+  let maximum=1;for(const d of entries)for(const b of d.daily.values())maximum=Math.max(maximum,b[metric]);
+  const dark=document.documentElement.dataset.theme==="dark";
+  const activeKey=$("heatmap").contains(document.activeElement)?document.activeElement.dataset.heatKey:null;
+  let html='<thead><tr><th scope="col">Врач</th>'+v.dates.map(day=>'<th scope="col" class="calendar-day '+([0,6].includes(weekday(day))?"weekend ":"")+(weekday(day)===1?"week-start":"")+'" aria-label="'+E(calendarDate(day))+'" title="'+E(calendarDate(day))+'"><b>'+Number(day.slice(-2))+'</b>'+weekdayName(day)+'</th>').join("")+'<th scope="col">Итого</th></tr></thead><tbody>';
+  for(const [index,d] of shown.entries()){
     const flags=new Map(d.signals.map(s=>[s.day,s]));
-    html+='<tr><td><button class="doctor-link" data-doctor="'+d.id+'" title="'+E(d.name)+'">'+E(shorten(d.name))+'</button></td>';
+    html+='<tr><td><button class="doctor-link" data-roving data-heat-key="'+d.id+'|name" tabindex="'+(index===0?'0':'-1')+'" data-doctor="'+d.id+'" title="'+E(d.name)+'">'+E(shorten(d.name))+'</button></td>';
     for(const day of v.dates){
-      const b=d.daily.get(day)||bucket(),activity=(v.active.get(d.id+"|"+day)||0)>0;
-      const intensity=b[metric]>0?Math.max(15,Math.round(15+85*Math.sqrt(b[metric]/max))):0;
-      const dark=intensity>58,flag=flags.get(day);
+      const b=d.daily.get(day)||bucket(),activity=(v.active.get(d.id+"|"+day)||0)>0,flag=flags.get(day);
+      const color=UI.heatColor(b[metric],maximum,dark);
       const amountText=metric==="quantity"?formatQ(b.quantity):(b.amount>=100000?formatQ(b.amount/100000)+"к":formatQ(b.amount/100));
       const tip=d.name+"\n"+calendarDate(day)+"\n"+(activity?formatQ(b.quantity)+" услуг · "+formatM(b.amount)+" ₽":"Нет услуг врача в выгрузке; график неизвестен")+(flag?"\nСнижение "+pct(flag.drop*100)+" относительно сопоставимых дней":"");
-      const style=intensity?'background:color-mix(in oklch,var(--accent) '+intensity+'%,var(--surface));color:'+(dark?"var(--surface)":"var(--text)"):'';
-      html+='<td class="cell '+(!activity?"missing ":"")+(flag?"low-cell":"")+'" style="'+style+'" title="'+E(tip)+'" data-tip="'+E(tip)+'">'+(activity?(flag?"↓":"")+E(amountText):"·")+'</td>';
+      const style=activity?'background:'+color.background+';color:'+color.color:'';
+      html+='<td role="gridcell" tabindex="-1" data-roving data-heat-key="'+d.id+'|'+day+'" data-heat-doctor="'+d.id+'" data-heat-day="'+day+'" aria-selected="false" aria-label="'+E(tip)+'" class="cell '+(!activity?"missing ":"")+(flag?"low-cell ":"")+(weekday(day)===1?"week-start":"")+'" style="'+style+'" data-tip="'+E(tip)+'">'+(activity?(flag?"↓":"")+E(amountText):"·")+'</td>';
     }
     html+='<td style="text-align:right;padding-left:10px;white-space:nowrap;font-size:12px">'+(metric==="quantity"?formatQ(d.quantity):formatM(d.amount))+'</td></tr>';
   }
   if(!entries.length)html+='<tr><td colspan="'+(v.dates.length+2)+'" class="empty">Нет врачей по выбранным фильтрам.</td></tr>';
   $("heatmap").innerHTML=html+'</tbody>';
+  $("heatCount").textContent=entries.length?'Врачи '+(state.heatPage*size+1)+'–'+Math.min((state.heatPage+1)*size,entries.length)+' из '+entries.length:'Нет врачей';
+  $("heatPrev").disabled=state.heatPage===0;$("heatNext").disabled=(state.heatPage+1)*size>=entries.length;
+  if(activeKey){const target=[...$("heatmap").querySelectorAll("[data-heat-key]")].find(n=>n.dataset.heatKey===activeKey);target?.focus({preventScroll:true});}
+  if(state.focus)focusDay(state.focus.day,state.focus.doctorId,false);
+}
+function signalMarkup(s,index,full=false){
+  const value=s.metric==="quantity"?formatQ:formatM,unit=s.metric==="quantity"?"усл.":"₽";
+  if(full)return '<button class="signal-row" data-signal-index="'+index+'"><span><strong>'+E(D.doctors[s.id])+'</strong><small>'+E([...state.view.doctors.get(s.id).departments].join(" · "))+'</small></span><span>'+E(dayText(s.day))+'<small>'+(s.metric==="quantity"?"Объём":"Сумма")+'</small></span><span>'+value(s.current)+' '+unit+'<small>База: '+value(s.baseline)+' '+unit+'</small></span><span>−'+pct(s.drop*100)+'</span></button>';
+  return '<div class="signal"><div class="signal-title"><span>'+E(dayText(s.day))+' · '+(s.metric==="quantity"?"Объём":"Сумма")+'</span><strong>−'+pct(s.drop*100)+'</strong></div><button data-signal-index="'+index+'">'+E(shorten(D.doctors[s.id]))+'</button><p>'+value(s.current)+' '+unit+' при базе '+value(s.baseline)+' '+unit+'</p><p>База: '+s.previous.map(dayText).join(", ")+'</p></div>';
 }
 function renderSignals(v){
-  $("signalCount").textContent=v.signals.length;
-  if(!v.signals.length){
-    $("signals").innerHTML='<div class="empty">Нет выявленных снижений.<p class="fine">Для сигнала нужны минимум два предыдущих таких же дня недели с услугами врача. Короткий период может не дать базы сравнения.</p></div>';
-    return;
-  }
-  $("signals").innerHTML=v.signals.slice(0,5).map(s=>{
-    const value=s.metric==="quantity"?formatQ:formatM,unit=s.metric==="quantity"?"усл.":"₽";
-    return '<div class="signal"><div class="signal-title"><span>'+E(dayText(s.day))+' · '+(s.metric==="quantity"?"Объём":"Сумма")+'</span><strong>−'+pct(s.drop*100)+'</strong></div><button data-doctor="'+s.id+'">'+E(shorten(D.doctors[s.id]))+'</button><p>'+value(s.current)+' '+unit+' при базе '+value(s.baseline)+' '+unit+'</p><p title="'+E(s.previous.map(fullDate).join(", "))+'">База: '+s.previous.map(dayText).join(", ")+'</p></div>';
-  }).join("")+(v.signals.length>5?'<p class="fine">Показаны 5 последних из '+v.signals.length+'. Выберите врача для разбора.</p>':"");
+  $("signalCount").textContent=v.signals.length;$("jumpSignalCount").textContent=v.signals.length;
+  $("allSignals").textContent="Все сигналы · "+v.signals.length;$("allSignals").disabled=!v.signals.length;
+  $("signals").innerHTML=v.signals.length?v.signals.slice(0,5).map((s,i)=>signalMarkup(s,i)).join(""):'<div class="empty">Нет выявленных снижений.<p class="fine">Нужны минимум два предыдущих таких же дня недели с услугами врача.</p></div>';
+  if(!$("signalQueue").hidden)renderSignalQueue();
 }
+function renderSignalQueue(){
+  const query=normalize($("signalSearch").value),v=state.view;if(!v)return;
+  const rows=v.signals.map((s,index)=>({s,index})).filter(({s})=>
+    (state.signalDoctor===null||s.id===state.signalDoctor)&&(!state.signalDay||s.day===state.signalDay)&&(!query||normalize(D.doctors[s.id]).includes(query)));
+  rows.sort((a,b)=>$("signalSort").value==="drop"?b.s.drop-a.s.drop||b.s.day.localeCompare(a.s.day):b.s.day.localeCompare(a.s.day)||b.s.drop-a.s.drop);
+  $("signalQueueCount").textContent="Показано "+Math.min(rows.length,state.signalLimit)+" из "+rows.length;
+  $("signalQueueTitle").textContent=state.signalDoctor===null?(state.signalDay?"Сигналы · "+dayText(state.signalDay):"Все сигналы"):"Сигналы · "+shorten(D.doctors[state.signalDoctor]);
+  $("signalQueueRows").innerHTML=rows.slice(0,state.signalLimit).map(({s,index})=>signalMarkup(s,index,true)).join("")||'<p class="empty">Сигналов по этому выбору нет. Измените поиск или откройте «Все сигналы».</p>';
+  $("moreSignals").hidden=rows.length<=state.signalLimit;
+}
+function showSignalQueue(doctorId=null,day=null){
+  state.signalDoctor=doctorId;state.signalDay=day;state.signalLimit=40;$("signalSearch").value="";
+  $("signalQueue").hidden=false;$("allSignals").setAttribute("aria-expanded","true");renderSignalQueue();
+  $("signalQueueTitle").focus({preventScroll:true});$("signalQueue").scrollIntoView({block:"start"});
+}
+function inspectDay(doctorId,day,trigger,keyboard=false,signal=null){
+  const index=heatEntries(state.view).findIndex(d=>d.id===doctorId);
+  if(index<0)return;state.heatPage=Math.floor(index/40);renderHeat(state.view);focusDay(day,doctorId,!keyboard);
+  openDoctorServices(doctorId,trigger,keyboard,day,signal);
+}
+
 function tableEntries(v){
   let entries;
   if(state.detail==="doctors")entries=[...v.doctors.values()].map(b=>({...b,label:b.name,subtitle:[...b.departments].join(" · "),extra:b.days.size,signals:b.signals.length}));
@@ -186,15 +242,20 @@ function renderTable(v){
   $("detailTitle").textContent=t[0];$("detailSubtitle").textContent=state.detail==="doctors"?"Фамилия открывает отчёт врача, количество — расшифровку услуг.":"Количество и суммы в текущем выборе";
   $("tableCount").textContent=entries.length?"Показано "+shown.length+" из "+entries.length:"Нет строк";
   const heads=[["label",t[1]],["quantity","Количество"],["amount","Сумма, ₽"],["extra",t[2]]];
-  let html='<thead><tr>'+heads.map(([key,label])=>'<th scope="col" aria-sort="'+(state.sort===key?(state.desc?"descending":"ascending"):"none")+'"><button data-sort="'+key+'">'+E(label)+(state.sort===key?(state.desc?" ↓":" ↑"):"")+'</button></th>').join("")+'<th scope="col">Доля количества</th><th scope="col">Сигналы</th></tr></thead><tbody>';
+  let html='<thead><tr>'+heads.map(([key,label])=>'<th scope="col" aria-sort="'+(state.sort===key?(state.desc?"descending":"ascending"):"none")+'"><button data-sort="'+key+'">'+E(label)+(state.sort===key?(state.desc?" ↓":" ↑"):"")+'</button></th>').join("")+'<th scope="col">Доля количества</th><th scope="col" aria-sort="'+(state.sort==='signals'?(state.desc?'descending':'ascending'):'none')+'"><button data-sort="signals">Сигналы'+(state.sort==='signals'?(state.desc?' ↓':' ↑'):'')+'</button></th></tr></thead><tbody>';
   for(const b of shown){
     const missing=state.detail==="days"&&!b.activity,share=v.total.quantity?b.quantity/v.total.quantity*100:0;
     const label=state.detail==="doctors"?'<button class="doctor-link" data-doctor="'+b.id+'">'+E(b.label)+'</button>':E(b.label);
     const quantity=state.detail==="doctors"?'<button class="quantity-detail" data-services-doctor="'+b.id+'" aria-haspopup="dialog" aria-label="'+E('Услуги врача '+b.label+': '+formatQ(b.quantity))+'" title="Открыть все услуги врача"><span>'+formatQ(b.quantity)+'</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></button>':formatQ(b.quantity);
-    html+='<tr><td>'+label+'<small>'+E(b.subtitle)+'</small>'+(state.detail==="services"?'<div class="rowbar" style="width:'+share+'%"></div>':"")+'</td><td>'+(missing?"·":quantity)+'</td><td>'+(missing?"·":formatM(b.amount))+'</td><td>'+(missing?"·":b.extra)+'</td><td>'+(missing?"·":pct(share))+'</td><td>'+(b.signals?'<span class="signal-label">'+b.signals+' ↓</span>':'<span class="neutral">нет</span>')+'</td></tr>';
+    html+='<tr><td>'+label+'<small>'+E(b.subtitle)+'</small>'+(state.detail==="services"?'<div class="rowbar" style="width:'+share+'%"></div>':"")+'</td><td>'+(missing?"·":quantity)+'</td><td>'+(missing?"·":formatM(b.amount))+'</td><td>'+(missing?"·":b.extra)+'</td><td>'+(missing?"·":pct(share))+'</td><td>'+(b.signals?'<button class="signal-label" '+(state.detail==='doctors'?'data-queue-doctor="'+b.id+'"':'data-queue-day="'+b.day+'"')+' aria-label="Открыть сигналы: '+E(b.label)+'">'+b.signals+' ↓</button>':'<span class="neutral">нет</span>')+'</td></tr>';
   }
   if(!shown.length)html+='<tr><td colspan="6" class="empty">По этому запросу ничего не найдено. Измените поиск или сбросьте фильтры.</td></tr>';
+  const activeSort=$("detailTable").contains(document.activeElement)?document.activeElement.dataset.sort:null;
   $("detailTable").innerHTML=html+'</tbody>';
+  if(activeSort)$("detailTable").querySelector('[data-sort="'+activeSort+'"]')?.focus({preventScroll:true});
+  let empty=$("tableEmpty");if(!empty){empty=document.createElement("p");empty.id="tableEmpty";empty.className="table-empty";$("detailTable").closest(".table-scroll").after(empty);}
+  empty.hidden=Boolean(shown.length);empty.textContent="По этому запросу ничего не найдено. Измените поиск или сбросьте фильтры.";
+  $("detailTable").closest(".table-scroll").hidden=!shown.length;
   $("moreButton").hidden=entries.length<=state.limit;
 }
 
@@ -214,10 +275,10 @@ function renderExtra(v){
 
 function render(){
   try{
-    const view=aggregate();state.view=view;$("filterError").hidden=true;$("report").hidden=false;$("exportButton").disabled=false;
+    const view=aggregate();if(view!==state.view){state.heatPage=0;state.signalLimit=40;pickerCache.clear();state.focus=null;$("focusContext").hidden=true;}state.view=view;$("summaryKpis").hidden=false;$("filterError").hidden=true;$("report").hidden=false;$("exportButton").disabled=false;
     renderKpis(view);chart("quantityChart",view,"quantity","bar");chart("amountChart",view,"amount","line");renderHeat(view);renderSignals(view);renderExtra(view);renderTable(view);syncFilters();
     $("periodLabel").textContent=fullDate(view.start)+" – "+fullDate(view.end);
-  }catch(error){$("filterError").textContent=error.message;$("filterError").hidden=false;$("report").hidden=true;$("exportButton").disabled=true;$("resetButton").disabled=false;}
+  }catch(error){$("summaryKpis").hidden=true;state.view=null;aggregateCache=null;hideTooltip();$("filterError").textContent=error.message;$("filterError").hidden=false;$("report").hidden=true;$("exportButton").disabled=true;$("resetButton").disabled=false;}
 }
 function csvCell(value){
   let s=String(value??"");
@@ -238,12 +299,50 @@ function switchTab(tab){
   $("report").setAttribute("aria-labelledby",tab==="target"?"targetTab":"allTab");
   $("codeField").hidden=tab==="target";render();
 }
+let tooltipTarget=null,tooltipSize=null,tooltipFrame=0,tooltipPoint=null;
+function hideTooltip(){cancelAnimationFrame(tooltipFrame);tooltipFrame=0;$("tooltip").hidden=true;tooltipTarget=null;tooltipSize=null;}
 function showTooltip(target,event){
-  const tooltip=$("tooltip");tooltip.textContent=target.dataset.tip;tooltip.hidden=false;
-  const rect=target.getBoundingClientRect();let x=event?.clientX??rect.left+rect.width/2,y=event?.clientY??rect.top;
-  x=Math.max(8,Math.min(x+12,innerWidth-tooltip.offsetWidth-8));y=Math.max(8,Math.min(y+12,innerHeight-tooltip.offsetHeight-8));
-  tooltip.style.left=x+"px";tooltip.style.top=y+"px";
+  const tooltip=$("tooltip");
+  if(target!==tooltipTarget){
+    tooltipTarget=target;tooltip.textContent=target.dataset.tip;tooltip.hidden=false;
+    tooltipSize={width:tooltip.offsetWidth,height:tooltip.offsetHeight};
+  }
+  if(event)tooltipPoint={x:event.clientX,y:event.clientY};
+  else{const r=target.getBoundingClientRect();tooltipPoint={x:r.left+r.width/2,y:r.top};}
+  if(tooltipFrame)return;
+  tooltipFrame=requestAnimationFrame(()=>{
+    tooltipFrame=0;if(!tooltipTarget||!tooltipSize)return;
+    const x=Math.max(8,Math.min(tooltipPoint.x+12,innerWidth-tooltipSize.width-8));
+    const y=Math.max(8,Math.min(tooltipPoint.y+12,innerHeight-tooltipSize.height-8));
+    tooltip.style.transform='translate3d('+x+'px,'+y+'px,0)';
+  });
 }
+function initializeRefinements(){
+  const media=window.matchMedia("(max-width:640px)"),toggle=$("filtersToggle"),controls=$("filterControls");
+  const sync=()=>{const expanded=!media.matches||toggle.getAttribute("aria-expanded")==="true";controls.hidden=!expanded;toggle.textContent=expanded?"Скрыть фильтры":"Настроить фильтры";};
+  toggle.addEventListener("click",()=>{toggle.setAttribute("aria-expanded",toggle.getAttribute("aria-expanded")!=="true");sync();});
+  media.addEventListener("change",sync);sync();
+  UI.roving($("heatmap"),"[data-roving]",true);
+  for(const id of ["quantityChart","amountChart"]){
+    UI.roving($(id),"[data-chart-day]");
+    $(id).addEventListener("focusin",e=>{if(UI.instant()&&e.target.dataset.chartDay)focusDay(e.target.dataset.chartDay,null,false);});
+    $(id).addEventListener("click",e=>{if(e.target.dataset.chartDay)focusDay(e.target.dataset.chartDay,null,e.detail>0);});
+    $(id).addEventListener("keydown",e=>{if(e.target.dataset.chartDay&&["Enter"," "].includes(e.key)){e.preventDefault();focusDay(e.target.dataset.chartDay,null,false);}});
+  }
+  for(const [id,step] of [["heatPrev",-1],["heatNext",1]])$(id).addEventListener("click",()=>{
+    state.heatPage+=step;renderHeat(state.view);$("heatmap").closest(".heatmap-scroll").scrollTop=0;
+    $("heatmap").querySelector("[data-roving]")?.focus({preventScroll:true});
+  });
+  $("clearFocus").addEventListener("click",()=>{state.focus=null;$("focusContext").hidden=true;updateChartFocus(false);renderHeat(state.view);$("heatMetric").focus({preventScroll:true});});
+  $("heatmap").addEventListener("click",e=>{const cell=e.target.closest("[data-heat-day]");if(cell)inspectDay(Number(cell.dataset.heatDoctor),cell.dataset.heatDay,cell,e.detail===0);});
+  $("heatmap").addEventListener("keydown",e=>{if(e.target.dataset.heatDay&&["Enter"," "].includes(e.key)){e.preventDefault();inspectDay(Number(e.target.dataset.heatDoctor),e.target.dataset.heatDay,e.target,true);}});
+  $("allSignals").addEventListener("click",()=>showSignalQueue());
+  $("closeSignals").addEventListener("click",()=>{$("signalQueue").hidden=true;$("allSignals").setAttribute("aria-expanded","false");$("allSignals").focus();});
+  $("signalSearch").addEventListener("input",()=>{state.signalLimit=40;renderSignalQueue();});
+  $("signalSort").addEventListener("change",()=>{state.signalLimit=40;renderSignalQueue();});
+  $("moreSignals").addEventListener("click",()=>{state.signalLimit+=40;renderSignalQueue();});
+}
+
 function initialize(){
   for(const id of ["dateFrom","dateTo"]){$(id).min=D.meta.start;$(id).max=D.meta.end;}
   $("dateFrom").value=D.meta.start;$("dateTo").value=D.meta.end;
@@ -257,6 +356,9 @@ function initialize(){
   if(stats.zero_tariff_rows||stats.restored_tariff_rows||stats.missing_doctor_rows)$("coverageNotice").innerHTML+=' <strong>Есть особенности данных: см. «Как считаем».</strong>';
   document.addEventListener("click",event=>{
     const b=event.target.closest("button");if(!b)return;
+    if(b.dataset.signalIndex!==undefined){const s=state.view?.signals[Number(b.dataset.signalIndex)];if(s)inspectDay(s.id,s.day,b,event.detail===0,s);return;}
+    if(b.dataset.queueDoctor!==undefined){showSignalQueue(Number(b.dataset.queueDoctor));return;}
+    if(b.dataset.queueDay){showSignalQueue(null,b.dataset.queueDay);return;}
     if(b.dataset.servicesDoctor!==undefined){openDoctorServices(Number(b.dataset.servicesDoctor),b,event.detail===0);return;}
     if(b.dataset.tab){switchTab(b.dataset.tab);return;}
     if(b.dataset.doctor!==undefined){$("doctor").value=D.doctors[Number(b.dataset.doctor)];state.limit=25;render();$("scopeText").scrollIntoView({block:"nearest"});return;}
@@ -266,7 +368,8 @@ function initialize(){
   document.querySelector(".tabs").addEventListener("keydown",e=>{
     if(["ArrowLeft","ArrowRight","Home","End"].includes(e.key)){e.preventDefault();const tab=e.key==="Home"?"target":e.key==="End"?"all":state.tab==="target"?"all":"target";switchTab(tab);$(tab==="target"?"targetTab":"allTab").focus();}
   });
-  for(const id of ["dateFrom","dateTo","heatMetric","threshold"])$(id).addEventListener("change",()=>{state.limit=25;render();});
+  $("heatMetric").addEventListener("change",()=>{state.heatPage=0;if(state.view)renderHeat(state.view);});
+  for(const id of ["dateFrom","dateTo","threshold"])$(id).addEventListener("change",()=>{state.limit=25;render();});
   $("tableSearch").addEventListener("input",()=>{state.limit=25;renderTable(state.view);syncFilters();});
   $("moreButton").addEventListener("click",()=>{state.limit+=50;renderTable(state.view);});
   $("resetButton").addEventListener("click",()=>{for(const id of ["department","doctor","service","tableSearch"])$(id).value="";$("dateFrom").value=D.meta.start;$("dateTo").value=D.meta.end;state.limit=25;render();});
@@ -274,17 +377,20 @@ function initialize(){
   for(const id of ["methodButton","mobileMethod"])$(id).addEventListener("click",()=>$("methodDialog").showModal());
   $("closeMethod").addEventListener("click",()=>$("methodDialog").close());
   $("methodDialog").addEventListener("click",e=>{if(e.target===$("methodDialog")){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.target.close();}});
-  document.addEventListener("pointermove",e=>{const t=e.target.closest("[data-tip]");if(t)showTooltip(t,e);else $("tooltip").hidden=true;});
+  document.addEventListener("pointermove",e=>{const t=e.target.closest("[data-tip]");if(t)showTooltip(t,e);else hideTooltip();});
   document.addEventListener("focusin",e=>{if(e.target.matches("[data-tip]"))showTooltip(e.target);});
-  document.addEventListener("focusout",()=>$("tooltip").hidden=true);
-  document.addEventListener("keydown",e=>{if(e.key==="Escape")$("tooltip").hidden=true;});
-  window.addEventListener("blur",()=>$("tooltip").hidden=true);
-  let resizeTimer;window.addEventListener("resize",()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(render,150);});
-  initializeFilters();initializeTheme();initializeDoctorServices();window.ClinicPace?.init(D);window.AnnualPlan?.init(D.annualPlan,D.meta);render();
+  document.addEventListener("focusout",hideTooltip);
+  document.addEventListener("keydown",e=>{if(e.key==="Escape")hideTooltip();});
+  window.addEventListener("blur",hideTooltip);
+  document.addEventListener("scroll",hideTooltip,true);
+  let resizeTimer;window.addEventListener("resize",()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(state.view){chart("quantityChart",state.view,"quantity","bar");chart("amountChart",state.view,"amount","line");}window.AnnualPlan?.resize();window.ClinicPace?.resize();hideTooltip();},150);});
+  initializeFilters();initializeTheme();initializeDoctorServices();initializeRefinements();window.ClinicPace?.init(D);window.AnnualPlan?.init(D.annualPlan,D.meta);render();
 }
 // Search menus keep a draft query separate from the applied filter.
 const pickers = new Map();
 function pickerRows(kind){
+  const cacheKey=JSON.stringify([kind,$("dateFrom").value,$("dateTo").value,$("department").value,$("doctor").value,$("service").value,state.tab]);
+  if(pickerCache.has(cacheKey))return pickerCache.get(cacheKey);
   const start=$("dateFrom").value,end=$("dateTo").value,dep=$("department").value;
   const doctor=$("doctor").value,service=$("service").value;
   const rows=D.records.filter(r=>r[0]>=start&&r[0]<=end);
@@ -303,13 +409,14 @@ function pickerRows(kind){
     label:kind==="department"?D.departments[Number(value)]:kind==="service"?value+" · "+D.services.find(s=>s.code===value).name:value,
     note:kind==="doctor"?[...units.get(value)].join(" · "):kind==="department"?"Подразделение":"Код услуги"}));
   items.sort((a,b)=>a.label.localeCompare(b.label,"ru"));
-  return [{value:"",label:labels[kind],note:"Снять ограничение",count:items.reduce((total,item)=>total+item.count,0)},...items];
+  const result=[{value:"",label:labels[kind],note:"Снять ограничение",count:items.reduce((total,item)=>total+item.count,0)},...items];
+  if(pickerCache.size>12)pickerCache.clear();pickerCache.set(cacheKey,result);return result;
 }
 class SearchPicker {
   constructor(kind){
     this.kind=kind;this.root=$(kind+"Picker");this.button=$(kind+"Trigger");this.menu=$(kind+"Menu");
     this.query=$(kind+"Query");this.list=$(kind+"List");this.status=$(kind+"Status");this.index=0;this.items=[];
-    this.button.addEventListener("click",()=>this.menu.hidden?this.open():this.close());
+    this.button.addEventListener("click",event=>this.menu.hidden?this.open(event.detail===0):this.close());
     this.query.addEventListener("input",()=>{this.index=0;this.populate();});
     this.query.addEventListener("keydown",event=>{
       if(event.key==="Escape"){event.preventDefault();this.close(true);return;}
@@ -328,7 +435,8 @@ class SearchPicker {
     $(kind+"Close").addEventListener("click",()=>this.close(true));
     pickers.set(kind,this);
   }
-  open(){
+  open(keyboard=false){
+    this.menu.dataset.instant=keyboard||UI.instant();
     for(const picker of pickers.values())picker.close();
     this.menu.hidden=false;this.root.classList.add("is-open");this.button.setAttribute("aria-expanded","true");
     this.query.value="";this.index=0;this.populate();this.query.focus();
@@ -397,6 +505,7 @@ function setTheme(dark,save=false){
   document.documentElement.dataset.theme=dark?"dark":"light";$("themeToggle").checked=dark;
   $("themeLabel").textContent=dark?"Тёмная тема":"Светлая тема";
   if(save){try{localStorage.setItem("veresaev-dashboard-theme",dark?"dark":"light");}catch{}}
+  if(state.view)renderHeat(state.view);
 }
 function initializeTheme(){
   let saved=null;try{saved=localStorage.getItem("veresaev-dashboard-theme");}catch{}
@@ -433,12 +542,15 @@ function renderDoctorServices(){
   $("doctorServicesSubtotalQ").textContent=formatQ(rows.reduce((n,r)=>n+r.quantity,0));
   $("doctorServicesSubtotalM").textContent=formatM(rows.reduce((n,r)=>n+r.amount,0));
 }
-function openDoctorServices(doctorId,trigger,keyboard=false){
-  const view=state.view,doctor=view?.doctors.get(doctorId);if(!doctor)return;
+function openDoctorServices(doctorId,trigger,keyboard=false,day=null,signal=null){
+  const base=state.view,doctor=base?.doctors.get(doctorId);if(!doctor)return;
+  const view=day?{...base,start:day,end:day,selected:base.selected.filter(r=>r[0]===day)}:base;
   const dialog=$("doctorServicesDialog"),rows=doctorServiceRows(view,doctorId);
   serviceMotion?.cancel();shareMotion?.cancel();
   serviceDetail={doctorId,rows,quantity:rows.reduce((n,r)=>n+r.quantity,0),amount:rows.reduce((n,r)=>n+r.amount,0)};
   serviceTrigger=trigger;
+  $("doctorSignalContext").hidden=!signal;
+  $("doctorSignalContext").textContent=signal?("Снижение "+pct(signal.drop*100)+". База: "+(signal.metric==="quantity"?formatQ(signal.baseline)+" усл.":formatM(signal.baseline)+" ₽")+" — медиана за "+signal.previous.map(dayText).join(", ").replace(/\.$/,"")+". Фильтры отчёта и период сравнения сохранены."):"";
   $("doctorServicesName").textContent=doctor.name;
   $("doctorServicesUnits").textContent=[...doctor.departments].join(" · ");
   $("doctorServicesScope").textContent=(state.tab==="target"?"Репродуктивное здоровье · 001983 и 001984":$("service").value?"Услуга "+$("service").value:"Все услуги")+" · "+fullDate(view.start)+" – "+fullDate(view.end);
@@ -484,8 +596,9 @@ function initializeDoctorServices(){
     serviceMotion?.cancel();shareMotion?.cancel();serviceMotion=null;shareMotion=null;
     document.documentElement.classList.remove("has-service-dialog");
     dialog.classList.remove("is-closing");dialog.style.opacity="1";dialog.style.transform="none";
-    const trigger=serviceTrigger?.isConnected?serviceTrigger:document.querySelector('[data-services-doctor="'+serviceDetail?.doctorId+'"]');
-    (trigger||$("tableSearch")).focus({preventScroll:true});serviceDetail=null;serviceTrigger=null;
+    const heatTrigger=state.focus&&[...$("heatmap").querySelectorAll("[data-heat-key]")].find(n=>n.dataset.heatKey===state.focus.doctorId+"|"+state.focus.day);
+    const trigger=serviceTrigger?.isConnected?serviceTrigger:serviceTrigger?.dataset.heatKey?heatTrigger:document.querySelector('[data-services-doctor="'+serviceDetail?.doctorId+'"]');
+    (trigger||heatTrigger||$("tableSearch")).focus({preventScroll:true});serviceDetail=null;serviceTrigger=null;
   });
 }
 
