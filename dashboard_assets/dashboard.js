@@ -12,6 +12,8 @@ const dateObj = value => new Date(value + "T12:00:00Z");
 const dayText = value => dateObj(value).toLocaleDateString("ru-RU",{day:"numeric",month:"short",timeZone:"UTC"});
 const fullDate = value => dateObj(value).toLocaleDateString("ru-RU",{day:"numeric",month:"long",year:"numeric",timeZone:"UTC"});
 const weekday = value => dateObj(value).getUTCDay();
+const weekdayName = value => ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"][weekday(value)];
+const calendarDate = value => weekdayName(value)+", "+fullDate(value);
 const sum = (rows, index) => rows.reduce((total,r) => total + r[index], 0);
 const median = values => {const a=[...values].sort((x,y)=>x-y);const i=Math.floor(a.length/2);return a.length%2?a[i]:(a[i-1]+a[i])/2;};
 const state = {tab:"target",detail:"doctors",sort:"quantity",desc:true,limit:25,view:null};
@@ -82,11 +84,13 @@ function niceStep(max,integer){
   let step=[1,2,2.5,5,10].map(n=>n*pow).find(n=>n>=raw)||pow*10;
   return integer?Math.max(1,Math.ceil(step)):step;
 }
+// A zero describes services found in this snapshot, not the doctor's working schedule.
+function chartValue(view,day,metric){return day<=D.meta.dataEnd?view.days.get(day)[metric]:null;}
 function chart(id,view,metric,type){
   const el=$(id), width=Math.max(260,Math.round(el.getBoundingClientRect().width)),height=190;
   const left=metric==="amount"?56:40,right=12,top=12,bottom=30;
   const w=width-left-right,h=height-top-bottom,n=view.dates.length;
-  const vals=view.dates.map(day=>{const b=view.days.get(day);return b.activity>0?b[metric]:null;});
+  const vals=view.dates.map(day=>chartValue(view,day,metric));
   const max=Math.max(0,...vals.filter(x=>x!==null)),step=niceStep(max,metric==="quantity"),ymax=Math.max(step,Math.ceil((max*1.08)/step)*step);
   const x=i=>left+(i+.5)*w/n,y=value=>top+h-value/ymax*h;
   const low=new Set(view.dailySignals.filter(s=>metric==="quantity"?s.quantityDrop>Number($("threshold").value):s.amountDrop>Number($("threshold").value)).map(s=>s.day));
@@ -109,7 +113,7 @@ function chart(id,view,metric,type){
   if(type==="line")path();
   for(let i=0;i<n;i++){
     const day=view.dates[i],b=view.days.get(day);
-    const tip=fullDate(day)+"\n"+(b.activity?formatQ(b.quantity)+" услуг · "+formatM(b.amount)+" ₽":"Нет сведений об активности")+(day===D.meta.today?"\nТекущий день: данные могут быть неполными":"");
+    const tip=calendarDate(day)+"\n"+(day>D.meta.dataEnd?"За пределами выгрузки: данных нет":formatQ(b.quantity)+" услуг · "+formatM(b.amount)+" ₽"+(!b.activity?"\nУслуг в выгрузке нет; график работы неизвестен":""))+(day===D.meta.today?"\nТекущий день: данные могут быть неполными":"");
     body+='<rect class="hit" tabindex="0" role="img" aria-label="'+E(tip)+'" data-tip="'+E(tip)+'" x="'+(left+i*w/n)+'" y="'+top+'" width="'+w/n+'" height="'+h+'"/>';
   }
   el.innerHTML='<svg viewBox="0 0 '+width+' '+height+'" role="img" aria-label="'+(metric==="quantity"?"Количество услуг":"Сумма услуг")+' по дням"><title>Дневная динамика. Точные значения доступны в таблице «По дням».</title>'+body+'</svg>';
@@ -133,7 +137,7 @@ function renderKpis(v){
 function renderHeat(v){
   const metric=$("heatMetric").value,entries=[...v.doctors.values()].sort((a,b)=>b[metric]-a[metric]||a.name.localeCompare(b.name,"ru"));
   const max=Math.max(1,...entries.flatMap(d=>[...d.daily.values()].map(b=>b[metric])));
-  let html='<thead><tr><th scope="col">Врач</th>'+v.dates.map(day=>'<th scope="col" class="'+([0,6].includes(weekday(day))?"weekend":"")+'" title="'+E(fullDate(day))+'">'+Number(day.slice(-2))+'</th>').join("")+'<th scope="col">Итого</th></tr></thead><tbody>';
+  let html='<thead><tr><th scope="col">Врач</th>'+v.dates.map(day=>'<th scope="col" tabindex="0" class="calendar-day '+([0,6].includes(weekday(day))?"weekend":"")+'" aria-label="'+E(calendarDate(day))+'" title="'+E(calendarDate(day))+'" data-tip="'+E(calendarDate(day))+'">'+weekdayName(day)+'</th>').join("")+'<th scope="col">Итого</th></tr></thead><tbody>';
   for(const d of entries){
     const flags=new Map(d.signals.map(s=>[s.day,s]));
     html+='<tr><td><button class="doctor-link" data-doctor="'+d.id+'" title="'+E(d.name)+'">'+E(shorten(d.name))+'</button></td>';
@@ -142,7 +146,7 @@ function renderHeat(v){
       const intensity=b[metric]>0?Math.max(15,Math.round(15+85*Math.sqrt(b[metric]/max))):0;
       const dark=intensity>58,flag=flags.get(day);
       const amountText=metric==="quantity"?formatQ(b.quantity):(b.amount>=100000?formatQ(b.amount/100000)+"к":formatQ(b.amount/100));
-      const tip=d.name+"\n"+fullDate(day)+"\n"+(activity?formatQ(b.quantity)+" услуг · "+formatM(b.amount)+" ₽":"Нет услуг врача в выгрузке; график неизвестен")+(flag?"\nСнижение "+pct(flag.drop*100)+" относительно сопоставимых дней":"");
+      const tip=d.name+"\n"+calendarDate(day)+"\n"+(activity?formatQ(b.quantity)+" услуг · "+formatM(b.amount)+" ₽":"Нет услуг врача в выгрузке; график неизвестен")+(flag?"\nСнижение "+pct(flag.drop*100)+" относительно сопоставимых дней":"");
       const style=intensity?'background:color-mix(in oklch,var(--accent) '+intensity+'%,var(--surface));color:'+(dark?"var(--surface)":"var(--text)"):'';
       html+='<td class="cell '+(!activity?"missing ":"")+(flag?"low-cell":"")+'" style="'+style+'" title="'+E(tip)+'" data-tip="'+E(tip)+'">'+(activity?(flag?"↓":"")+E(amountText):"·")+'</td>';
     }
@@ -179,14 +183,15 @@ function tableEntries(v){
 function renderTable(v){
   const entries=tableEntries(v),shown=entries.slice(0,state.limit);
   const titles={doctors:["Результаты врачей","Врач","Дней с услугами"],services:["Структура услуг","Код и услуга","Врачей"],days:["Дневная детализация","Дата","Врачей"]},t=titles[state.detail];
-  $("detailTitle").textContent=t[0];$("detailSubtitle").textContent=state.detail==="doctors"?"Выберите врача для персонального отчёта.":"Количество и суммы в текущем выборе";
+  $("detailTitle").textContent=t[0];$("detailSubtitle").textContent=state.detail==="doctors"?"Фамилия открывает отчёт врача, количество — расшифровку услуг.":"Количество и суммы в текущем выборе";
   $("tableCount").textContent=entries.length?"Показано "+shown.length+" из "+entries.length:"Нет строк";
   const heads=[["label",t[1]],["quantity","Количество"],["amount","Сумма, ₽"],["extra",t[2]]];
   let html='<thead><tr>'+heads.map(([key,label])=>'<th scope="col" aria-sort="'+(state.sort===key?(state.desc?"descending":"ascending"):"none")+'"><button data-sort="'+key+'">'+E(label)+(state.sort===key?(state.desc?" ↓":" ↑"):"")+'</button></th>').join("")+'<th scope="col">Доля количества</th><th scope="col">Сигналы</th></tr></thead><tbody>';
   for(const b of shown){
     const missing=state.detail==="days"&&!b.activity,share=v.total.quantity?b.quantity/v.total.quantity*100:0;
     const label=state.detail==="doctors"?'<button class="doctor-link" data-doctor="'+b.id+'">'+E(b.label)+'</button>':E(b.label);
-    html+='<tr><td>'+label+'<small>'+E(b.subtitle)+'</small>'+(state.detail==="services"?'<div class="rowbar" style="width:'+share+'%"></div>':"")+'</td><td>'+(missing?"·":formatQ(b.quantity))+'</td><td>'+(missing?"·":formatM(b.amount))+'</td><td>'+(missing?"·":b.extra)+'</td><td>'+(missing?"·":pct(share))+'</td><td>'+(b.signals?'<span class="signal-label">'+b.signals+' ↓</span>':'<span class="neutral">нет</span>')+'</td></tr>';
+    const quantity=state.detail==="doctors"?'<button class="quantity-detail" data-services-doctor="'+b.id+'" aria-haspopup="dialog" aria-label="'+E('Услуги врача '+b.label+': '+formatQ(b.quantity))+'" title="Открыть все услуги врача"><span>'+formatQ(b.quantity)+'</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></button>':formatQ(b.quantity);
+    html+='<tr><td>'+label+'<small>'+E(b.subtitle)+'</small>'+(state.detail==="services"?'<div class="rowbar" style="width:'+share+'%"></div>':"")+'</td><td>'+(missing?"·":quantity)+'</td><td>'+(missing?"·":formatM(b.amount))+'</td><td>'+(missing?"·":b.extra)+'</td><td>'+(missing?"·":pct(share))+'</td><td>'+(b.signals?'<span class="signal-label">'+b.signals+' ↓</span>':'<span class="neutral">нет</span>')+'</td></tr>';
   }
   if(!shown.length)html+='<tr><td colspan="6" class="empty">По этому запросу ничего не найдено. Измените поиск или сбросьте фильтры.</td></tr>';
   $("detailTable").innerHTML=html+'</tbody>';
@@ -248,10 +253,11 @@ function initialize(){
   $("coverageNotice").innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 3v1"/></svg><span class="notice-copy">'+$("coverageNotice").innerHTML+'</span>';
   $("sourceLabel").textContent=D.meta.source+" · "+D.meta.sheet+" · "+formatQ(D.meta.stats.included_rows)+" строк";
   const stats=D.meta.stats;
-  $("qualityDetails").innerHTML='<ul><li>Прочитано строк: '+formatQ(stats.source_rows||0)+'</li><li>Включено: '+formatQ(stats.included_rows||0)+'</li><li>Вне периода: '+formatQ(stats.outside_period||0)+'</li><li>Другие подразделения: '+formatQ(stats.excluded_departments||0)+'</li><li>Пустых строк: '+formatQ(stats.blank_rows||0)+'</li><li>Восстановлено пустых тарифов: '+formatQ(stats.restored_tariff_rows||0)+'</li><li>Нулевые тарифы при положительном количестве: '+formatQ(stats.zero_tariff_rows||0)+'</li><li>Строк без врача: '+formatQ(stats.missing_doctor_rows||0)+'</li></ul><p>Источник: '+E(D.meta.source)+'; лист «'+E(D.meta.sheet)+'». Создан: '+E(D.meta.created)+'.</p><p class="hash">SHA-256: '+E(D.meta.sha256)+'</p>';
+  $("qualityDetails").innerHTML='<ul><li>Прочитано строк: '+formatQ(stats.source_rows||0)+'</li><li>Включено: '+formatQ(stats.included_rows||0)+'</li><li>Вне периода: '+formatQ(stats.outside_period||0)+'</li><li>Другие подразделения: '+formatQ(stats.excluded_departments||0)+'</li><li>Пустых строк: '+formatQ(stats.blank_rows||0)+'</li><li>Восстановлено пустых тарифов: '+formatQ(stats.restored_tariff_rows||0)+'</li><li>Нулевые тарифы при положительном количестве: '+formatQ(stats.zero_tariff_rows||0)+'</li><li>Строк без врача: '+formatQ(stats.missing_doctor_rows||0)+'</li></ul><p>Источник: '+E(D.meta.source)+'; лист «'+E(D.meta.sheet)+'». Создан: '+E(D.meta.created)+'.';
   if(stats.zero_tariff_rows||stats.restored_tariff_rows||stats.missing_doctor_rows)$("coverageNotice").innerHTML+=' <strong>Есть особенности данных: см. «Как считаем».</strong>';
   document.addEventListener("click",event=>{
     const b=event.target.closest("button");if(!b)return;
+    if(b.dataset.servicesDoctor!==undefined){openDoctorServices(Number(b.dataset.servicesDoctor),b,event.detail===0);return;}
     if(b.dataset.tab){switchTab(b.dataset.tab);return;}
     if(b.dataset.doctor!==undefined){$("doctor").value=D.doctors[Number(b.dataset.doctor)];state.limit=25;render();$("scopeText").scrollIntoView({block:"nearest"});return;}
     if(b.dataset.detail){state.detail=b.dataset.detail;state.sort=state.detail==="days"?"label":"quantity";state.desc=state.detail!=="days";state.limit=25;$("tableSearch").value="";document.querySelectorAll("[data-detail]").forEach(x=>x.setAttribute("aria-pressed",x===b));renderTable(state.view);return;}
@@ -274,7 +280,7 @@ function initialize(){
   document.addEventListener("keydown",e=>{if(e.key==="Escape")$("tooltip").hidden=true;});
   window.addEventListener("blur",()=>$("tooltip").hidden=true);
   let resizeTimer;window.addEventListener("resize",()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(render,150);});
-  initializeFilters();initializeTheme();render();
+  initializeFilters();initializeTheme();initializeDoctorServices();render();
 }
 // Search menus keep a draft query separate from the applied filter.
 const pickers = new Map();
@@ -397,6 +403,92 @@ function initializeTheme(){
   setTheme(saved==="dark");$("themeToggle").addEventListener("change",event=>setTheme(event.target.checked,true));
 }
 
+// The detail uses exactly the selected rows behind the clicked doctor's total.
+function doctorServiceRows(view,doctorId,tab=state.tab){
+  const grouped=new Map();
+  if(tab==="target")for(const code of D.targets){
+    const service=D.services.find(s=>s.code===code);
+    grouped.set(code,{code,name:service?.name||"Услуга "+code,quantity:0,amount:0});
+  }
+  for(const r of view.selected){
+    if(r[2]!==doctorId)continue;
+    const service=D.services[r[3]];
+    if(!grouped.has(service.code))grouped.set(service.code,{...service,quantity:0,amount:0});
+    const row=grouped.get(service.code);row.quantity+=r[4];row.amount+=r[5];
+  }
+  return [...grouped.values()];
+}
+let serviceDetail=null,serviceTrigger=null,serviceMotion=null,shareMotion=null;
+const reducedMotion=()=>window.matchMedia?.("(prefers-reduced-motion: reduce)").matches??true;
+function renderDoctorServices(){
+  if(!serviceDetail)return;
+  const query=normalize($("doctorServicesSearch").value),sort=$("doctorServicesSort").value;
+  const rows=serviceDetail.rows.filter(row=>normalize(row.code+" "+row.name).includes(query));
+  rows.sort((a,b)=>sort==="code"?a.code.localeCompare(b.code):b[sort]-a[sort]||a.code.localeCompare(b.code));
+  $("doctorServicesCount").textContent="Кодов: "+rows.length+" из "+serviceDetail.rows.length;
+  $("doctorServicesBody").innerHTML=rows.map(row=>{
+    const share=serviceDetail.quantity?row.quantity/serviceDetail.quantity*100:0;
+    return '<tr><th scope="row"><span class="service-code">'+E(row.code)+'</span><span class="service-name">'+E(row.name)+'</span><div class="service-share" aria-hidden="true"><i style="width:'+share+'%"></i></div></th><td><strong>'+formatQ(row.quantity)+'</strong><small>'+pct(share)+'</small></td><td>'+formatM(row.amount)+'</td></tr>';
+  }).join("")||'<tr><td colspan="3" class="empty">Услуги не найдены. Измените код или название в поиске.</td></tr>';
+  $("doctorServicesSubtotalQ").textContent=formatQ(rows.reduce((n,r)=>n+r.quantity,0));
+  $("doctorServicesSubtotalM").textContent=formatM(rows.reduce((n,r)=>n+r.amount,0));
+}
+function openDoctorServices(doctorId,trigger,keyboard=false){
+  const view=state.view,doctor=view?.doctors.get(doctorId);if(!doctor)return;
+  const dialog=$("doctorServicesDialog"),rows=doctorServiceRows(view,doctorId);
+  serviceMotion?.cancel();shareMotion?.cancel();
+  serviceDetail={doctorId,rows,quantity:rows.reduce((n,r)=>n+r.quantity,0),amount:rows.reduce((n,r)=>n+r.amount,0)};
+  serviceTrigger=trigger;
+  $("doctorServicesName").textContent=doctor.name;
+  $("doctorServicesUnits").textContent=[...doctor.departments].join(" · ");
+  $("doctorServicesScope").textContent=(state.tab==="target"?"Репродуктивное здоровье · 001983 и 001984":$("service").value?"Услуга "+$("service").value:"Все услуги")+" · "+fullDate(view.start)+" – "+fullDate(view.end);
+  $("doctorServicesTotalQ").textContent=formatQ(serviceDetail.quantity);
+  $("doctorServicesTotalM").textContent=formatM(serviceDetail.amount);
+  $("doctorServicesSearch").value="";$("doctorServicesSort").value="quantity";
+  renderDoctorServices();
+  $("tooltip").hidden=true;
+  dialog.classList.remove("is-closing");dialog.classList.toggle("instant-motion",keyboard||reducedMotion());
+  dialog.style.opacity="1";dialog.style.transform="none";
+  document.documentElement.classList.add("has-service-dialog");
+  if(!dialog.open)dialog.showModal();
+  $("doctorServicesScroll").scrollTop=0;
+  $("doctorServicesTitle").focus({preventScroll:true});
+  if(!keyboard&&!reducedMotion()&&window.anime){
+    serviceMotion=window.anime.animate(dialog,{opacity:[0,1],translateY:[12,0],scale:[.975,1],duration:220,ease:"outQuint"});
+    shareMotion=window.anime.animate(dialog.querySelectorAll(".service-share i"),{scaleX:[0,1],duration:240,ease:"outQuint"});
+  }
+}
+function closeDoctorServices(keyboard=false){
+  const dialog=$("doctorServicesDialog");if(!dialog.open)return;
+  // Escape always closes immediately, including during an entrance or exit.
+  if(dialog.classList.contains("is-closing")&&!keyboard)return;
+  serviceMotion?.cancel();shareMotion?.cancel();
+  const finish=()=>{dialog.close();};
+  if(keyboard||reducedMotion()||!window.anime){finish();return;}
+  dialog.classList.add("is-closing");
+  serviceMotion=window.anime.animate(dialog,{opacity:0,translateY:8,scale:.985,duration:160,ease:"outQuad",onComplete:finish});
+}
+function initializeDoctorServices(){
+  const dialog=$("doctorServicesDialog");
+  $("doctorServicesSearch").addEventListener("input",renderDoctorServices);
+  $("doctorServicesSort").addEventListener("change",renderDoctorServices);
+  $("closeDoctorServices").addEventListener("click",event=>closeDoctorServices(event.detail===0));
+  dialog.addEventListener("cancel",event=>{event.preventDefault();closeDoctorServices(true);});
+  // Search inputs consume Escape to clear themselves; close this modal on the first press.
+  dialog.addEventListener("keydown",event=>{if(event.key==="Escape"){event.preventDefault();closeDoctorServices(true);}});
+  let startedOnBackdrop=false;
+  const outside=event=>{const r=dialog.getBoundingClientRect();return event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom;};
+  dialog.addEventListener("pointerdown",event=>{startedOnBackdrop=event.target===dialog&&outside(event);});
+  dialog.addEventListener("click",event=>{if(startedOnBackdrop&&event.target===dialog&&outside(event))closeDoctorServices();startedOnBackdrop=false;});
+  dialog.addEventListener("close",()=>{
+    serviceMotion?.cancel();shareMotion?.cancel();serviceMotion=null;shareMotion=null;
+    document.documentElement.classList.remove("has-service-dialog");
+    dialog.classList.remove("is-closing");dialog.style.opacity="1";dialog.style.transform="none";
+    const trigger=serviceTrigger?.isConnected?serviceTrigger:document.querySelector('[data-services-doctor="'+serviceDetail?.doctorId+'"]');
+    (trigger||$("tableSearch")).focus({preventScroll:true});serviceDetail=null;serviceTrigger=null;
+  });
+}
+
 initialize();
-window.Dashboard = {data:D,state,aggregate,render,switchTab};
+window.Dashboard = {data:D,state,aggregate,render,switchTab,chartValue,doctorServiceRows};
 })();

@@ -67,7 +67,7 @@
 <section class="panel"><div class="panel-head"><div><h2>Сумма по дням</h2><p id="amountChartNote"></p></div><span class="unit">₽</span></div><div class="chart" id="amountChart"></div><div class="chart-caption" id="amountCaption"></div></section>
 </div>
 </div><div class="analysis-grid">
-<section class="panel calendar-panel"><div class="panel-head"><div><h2>Календарь врачей</h2><p>Дневной объём. Нажмите на фамилию, чтобы открыть врача.</p></div><select id="heatMetric" aria-label="Показатель календаря"><option value="quantity">Количество</option><option value="amount">Сумма, ₽</option></select></div>
+<section class="panel calendar-panel"><div class="panel-head"><div><h2>Календарь врачей</h2><p>Дни недели в колонках. Точная дата при наведении. Фамилия открывает отчёт врача.</p></div><select id="heatMetric" aria-label="Показатель календаря"><option value="quantity">Количество</option><option value="amount">Сумма, ₽</option></select></div>
 <div class="heatmap-scroll" tabindex="0" aria-label="Прокручиваемая таблица активности врачей"><table id="heatmap"></table></div>
 <div class="chart-caption heat-legend"><span>Меньше <i class="heat-scale"></i> Больше</span><span>0 = услуг нет · · = нет сведений об активности · ↓ = снижение</span></div></section>
 <aside class="panel signals-panel"><div class="panel-head"><div><h2>Точки внимания</h2><p>Сигналы для проверки</p></div><span class="count" id="signalCount">0</span></div>
@@ -89,9 +89,21 @@
 <h3>Количество и сумма</h3><p>Количество = сумма колонки «Кол-во». Сумма = «Тариф» × «Кол-во» для каждой строки с округлением до копеек, затем сложение. Повторяющиеся строки суммируются, а не удаляются как дубликаты.</p>
 <h3>Подразделения</h3><p>Используются правила месячного отчёта проекта, включая объединение ЖК по дате реорганизации. На вкладке «Все услуги» показаны все коды в выбранных подразделениях.</p>
 <h3>Снижения</h3><p>Для каждой даты берём до четырёх предыдущих таких же дней недели внутри выбранного периода. Минимум два дня должны иметь любые услуги того же врача. Если количество или сумма ниже медианы более чем на выбранный порог, появляется сигнал. Это наблюдение об объёме, не оценка качества работы и не выполнение плана. Расписания, отпусков и планов в выгрузке нет.</p>
-<h3>Пустые дни и тарифы</h3><p>День без каких-либо записей в выгрузке не считается нулём. В календаре «·» означает, что у врача не найдено ни одной услуги за день, и график работы неизвестен. Текущий день не участвует в поиске снижений. Пустой тариф восстанавливается только по единственной положительной цене того же кода в том же месяце; явно нулевой тариф сохраняется и отмечается.</p>
+<h3>Пустые дни и тарифы</h3><p>На дневных графиках дни без услуг до последней даты выгрузки показаны нулём. Даты после неё остаются без данных. В расчёте медианы и в календаре отсутствие активности по-прежнему отличается от нулевого объёма выбранных услуг. В календаре «·» означает, что у врача не найдено ни одной услуги за день, и график работы неизвестен. Текущий день не участвует в поиске снижений. Пустой тариф восстанавливается только по единственной положительной цене того же кода в том же месяце; явно нулевой тариф сохраняется и отмечается.</p>
 <h3>Источник и проверка</h3><div id="qualityDetails"></div>
 <p>Файл содержит агрегаты по врачу, дате, подразделению и коду услуги. ФИО пациентов, полисы, диагнозы и идентификаторы пациентов не включены. Все фильтры пересчитывают весь отчёт. CSV выгружает дневные агрегаты в текущем выборе.</p></div></dialog>
+<dialog id="doctorServicesDialog" aria-labelledby="doctorServicesTitle" aria-describedby="doctorServicesName doctorServicesScope">
+  <header class="services-heading">
+    <div><h2 id="doctorServicesTitle" tabindex="-1">Услуги врача</h2><p id="doctorServicesName" class="services-doctor"></p><p id="doctorServicesUnits" class="services-units"></p></div>
+    <button id="closeDoctorServices" class="services-close" aria-label="Закрыть расшифровку услуг"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+  </header>
+  <p id="doctorServicesScope" class="services-scope"></p>
+  <div class="services-totals"><div><span>Выполнено услуг</span><strong id="doctorServicesTotalQ"></strong></div><div><span>На сумму, ₽</span><strong id="doctorServicesTotalM"></strong></div></div>
+  <div class="services-toolbar"><label class="services-search"><span class="sr-only">Найти услугу в расшифровке</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><input type="search" id="doctorServicesSearch" placeholder="Код или название услуги" autocomplete="off"></label><select id="doctorServicesSort" aria-label="Порядок услуг в расшифровке"><option value="quantity">По количеству</option><option value="amount">По сумме</option><option value="code">По коду</option></select></div>
+  <div id="doctorServicesScroll" class="services-scroll" tabindex="0" aria-label="Все услуги выбранного врача"><table class="services-table"><thead><tr><th scope="col">Код и услуга</th><th scope="col">Количество<span>и доля</span></th><th scope="col">Сумма, ₽</th></tr></thead><tbody id="doctorServicesBody"></tbody><tfoot><tr><th scope="row">Итого по показанным услугам</th><td id="doctorServicesSubtotalQ"></td><td id="doctorServicesSubtotalM"></td></tr></tfoot></table></div>
+  <footer class="services-footer"><span id="doctorServicesCount" role="status" aria-live="polite"></span><span>Тариф × количество · с учётом фильтров отчёта</span></footer>
+</dialog>
+
 <div id="tooltip" role="tooltip" hidden></div>
-<script type="application/json" id="report-data">{{DATA}}</script><script>{{SCRIPT}}</script>
+<script type="application/json" id="report-data">{{DATA}}</script><script>{{ANIME}}</script><script>{{SCRIPT}}</script>
 </body></html>
