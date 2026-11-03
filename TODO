@@ -1,3 +1,3 @@
 python -m PyInstaller --noconfirm --clean --onefile --hidden-import pandas --hidden-import openpyxl zhk_report.py
 
-python -m PyInstaller --noconfirm --clean --onefile --hidden-import pandas --hidden-import openpyxl zhk_dashboard.py
+python -m PyInstaller --noconfirm --clean --onefile --hidden-import openpyxl --hidden-import xlrd --add-data "dashboard_assets:dashboard_assets" --icon "dashboard_assets/app_icon.ico" zhk_dashboard.py
