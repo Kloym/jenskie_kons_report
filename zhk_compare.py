@@ -42,6 +42,11 @@ UNITS = (
     "ЖК №10",
 )
 PLANET = UNITS[2]
+HOSPITAL_UNITS = {
+    UNITS[0]: "№1-1",
+    UNITS[1]: "№2-1",
+    UNITS[2]: "№3-1",
+}
 
 TEMPLATE = (
     Path(__file__).resolve().parent
@@ -434,7 +439,7 @@ def read_day_hospital(path, start, end):
     data = PeriodData(hospital_source=path.name, hospital_sheet=sheet, hospital_stats=stats)
     for department in departments:
         unit, _ = identify_department(department.name)
-        source = "Дневной стационар №1-1" if unit == UNITS[0] else "Дневной стационар №2-1"
+        source = f"Дневной стационар {HOSPITAL_UNITS[unit]}"
         for record in department.sorted_records():
             doctor_name = safe_excel_text(record.doctor)
             doctor = normalize_key(doctor_name)
@@ -818,73 +823,105 @@ def period_header(value, labels):
 
 
 def write_day_hospital_sheet(writer, old, new, labels, period):
-    """Отдельная расшифровка уже включённых в ЖК услуг; не новый общий итог."""
+    """Расшифровка уже включённых в ЖК услуг с общими столбцами показателей."""
     old, new = old.day_hospital, new.day_hospital
     name = "Дневной стационар"
     ws = writer.book.create_sheet(name, writer.book.sheetnames.index("Планетная") + 1)
     ws.sheet_view.showGridLines = False
     ws.sheet_view.zoomScale = 85
     ws.sheet_properties.tabColor = "1F4E78"
-    ws.freeze_panes = "B6"
+    # Все заголовки показателей (включая L:N) остаются над прокручиваемыми данными.
+    ws.freeze_panes = "E13"
     ws.page_setup.orientation = "landscape"
     ws.page_setup.paperSize = ws.PAPERSIZE_A3
     ws.page_setup.fitToWidth = 1
     ws.page_setup.fitToHeight = 0
     ws.sheet_properties.pageSetUpPr.fitToPage = True
-    ws.print_title_rows = "1:5"
-    widths = (34, 24, 18, 28, 18, 20, 20, 18, 22, 22, 22, 22, 22, 22)
+    ws.print_title_rows = "1:12"
+    widths = (28, 13, 24, 38, 18, 18, 14, 15, 20, 20, 19, 23, 23, 21)
     for col, width in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(col)].width = width
 
-    def title(row, text, size=12):
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=14)
+    def title(row, text, size=11, height=22):
+        # Объединение заканчивается ДО границы закрепления E: текст не обрезается
+        # при горизонтальной прокрутке, в том числе в Excel Online.
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
         cell = ws.cell(row, 1, text)
         cell.font = Font(name="Calibri", size=size, bold=True, color="1F4E78")
         cell.alignment = Alignment(vertical="center", wrap_text=True)
-        ws.row_dimensions[row].height = 28 if size < 16 else 34
+        ws.row_dimensions[row].height = height
 
-    title(1, "Дневной стационар: сравнение периодов", 18)
-    title(2, period, 11)
-    title(3, "№1-1 включён в Лобненскую; №2-1 — в Петрозаводскую. Ниже — расшифровка этих сумм.", 11)
+    title(1, "Дневной стационар: сравнение периодов", 16, 28)
+    title(2, period, 11, 22)
+    title(3, "№1-1 — Лобненская; №2-1 — Петрозаводская; №3-1 — Планетная.\nУслуги уже включены в общие итоги ЖК.", 10, 30)
+    title(4, "Нет записей: количество и сумма — 0; средняя и рост от нуля не рассчитываются.", 10, 22)
 
-    def labels_for(base, prefix):
-        return prefix + [
-            period_header(v, labels)
-            for v in writer.headers[base][len(prefix):]
-        ]
+    # Одинаковое положение показателей во всех трёх блоках: E:N.
+    # Закреплённая строка 12 остаётся верной и при переходе к врачам.
+    headers = ["ЖК", "Стационар", "Код МЭС / врач", "Название МЭС / число кодов"] + [
+        period_header(v, labels).replace("Средняя стоимость", "Средняя стоимость МЭС")
+        for v in writer.headers["AllServices14"][4:]
+    ]
+    headers[-1] = "Разница средней стоимости МЭС"
 
-    def write_table(table_name, base, header_row, rows, headers):
-        writer.styles[table_name] = writer.styles[base]
+    def write_table(table_name, header_row, rows):
+        writer.styles[table_name] = writer.styles["AllServices14"]
         end = writer.table(name, table_name, header_row, 1, rows, headers)
-        average0, average1, delta = {
-            "PlanetaGroups14": ("I", "J", "K"),
-            "AllServices14": ("L", "M", "N"),
-            "DoctorComparison14": ("J", "K", "L"),
-        }[base]
+        ws.row_dimensions[header_row].height = 54
         for row in range(header_row + 1, end + 1):
-            ws[f"{delta}{row}"] = (
-                f'=IF(OR({average0}{row}="",{average1}{row}=""),"",'
-                f'ROUND({average1}{row}-{average0}{row},2))'
+            if not rows:
+                continue
+            ws[f"N{row}"] = (
+                f'=IF(OR(L{row}="",M{row}=""),"",ROUND(M{row}-L{row},2))'
             )
+        writer.colors(name, ("G", "K", "N"), header_row + 1, end)
         return end
 
-    summary = []
-    for row, unit, label in (
-        (6, UNITS[0], "ДС №1-1 (Лобненская)"),
-        (7, UNITS[1], "ДС №2-1 (Петрозаводская)"),
-    ):
-        summary.append(metrics([label], *pair(old.units, new.units, unit), row))
-    total = metrics(["ИТОГО по стационару"], old.total, new.total, 8)
-    for index, col in ((1, "B"), (2, "C"), (5, "F"), (6, "G")):
-        total[index] = f"=SUM({col}6:{col}7)"
-    summary.append(total)
-    write_table("DayHospitalSummary", "PlanetaGroups14", 5, summary,
-                labels_for("PlanetaGroups14", ["Стационар / ЖК"]))
-    writer.colors(name, ("D", "H", "K"), 6, 8)
-    for cell in ws[8][:11]:
-        cell.font = Font(name="Calibri", size=11, bold=True, color="1F4E78")
+    def code_counts(x, y):
+        return f"Кодов МЭС: {labels[0]} — {len(x.codes)}; {labels[1]} — {len(y.codes)}"
 
-    for row, label, data in ((10, labels[0], old), (11, labels[1], new)):
+    summary = []
+    for row, (unit, station) in enumerate(HOSPITAL_UNITS.items(), 6):
+        x, y = pair(old.units, new.units, unit)
+        summary.append(metrics([unit, station, "Все МЭС", code_counts(x, y)], x, y, row))
+    total = metrics(["ИТОГО по стационару", "", "Все МЭС", code_counts(old.total, new.total)],
+                    old.total, new.total, 9)
+    for index, col in ((4, "E"), (5, "F"), (8, "I"), (9, "J")):
+        total[index] = f"=SUM({col}6:{col}8)"
+    summary.append(total)
+    write_table("DayHospitalSummary", 5, summary)
+    for row in range(6, 10):
+        ws.row_dimensions[row].height = 32
+    for cell in ws[9][:14]:
+        cell.font = Font(name="Calibri", size=11, bold=True, color="1F4E78")
+    ws.row_dimensions[10].height = 7
+
+    title(11, "По кодам МЭС", 12, 22)
+    names = old.names | new.names
+    keys = sorted(set(old.services) | set(new.services), key=lambda k: (UNITS.index(k[0]), k[1]))
+    rows = []
+    for row, (unit, code) in enumerate(keys, 13):
+        rows.append(metrics([unit, HOSPITAL_UNITS[unit], code, names[code]],
+                            *pair(old.services, new.services, (unit, code)), row))
+    end = write_table("DayHospitalMES", 12, rows)
+    for row in range(13, end + 1):
+        ws.cell(row, 3).number_format = "@"
+        ws.row_dimensions[row].height = max(40, 15 * ((len(str(ws.cell(row, 4).value or "")) + 34) // 35))
+
+    doctor_header = end + 4
+    title(doctor_header - 1, "По врачам дневного стационара", 12)
+    doctor_names = old.doctor_names | new.doctor_names
+    keys = sorted(set(old.doctors) | set(new.doctors), key=lambda k: (UNITS.index(k[0]), k[1]))
+    rows = []
+    for row, key in enumerate(keys, doctor_header + 1):
+        unit, doctor = key
+        x, y = pair(old.doctors, new.doctors, key)
+        rows.append(metrics([unit, HOSPITAL_UNITS[unit], doctor_names[doctor], code_counts(x, y)],
+                            x, y, row))
+    end = write_table("DayHospitalDoctors", doctor_header, rows)
+
+    # Служебные сведения внизу не увеличивают закреплённую область.
+    for row, label, data in ((end + 2, labels[0], old), (end + 3, labels[1], new)):
         stats = data.hospital_stats
         detail = (
             f"{label}: {data.hospital_source}; принято {stats.accepted_rows}, "
@@ -894,36 +931,9 @@ def write_day_hospital_sheet(writer, old, new, labels, period):
             detail += " Строки: " + ", ".join(map(str, stats.erzl_examples)) + "."
         if stats.without_discharge_date:
             detail += f" Без даты выбытия: {stats.without_discharge_date} (не включены)."
-        title(row, detail, 10)
+        title(row, detail, 10, max(44, 14 * ((len(detail) + 99) // 100)))
         ws.cell(row, 1).font = Font(name="Calibri", size=10, color="595959")
-
-    title(13, "По кодам МЭС")
-    names = old.names | new.names
-    keys = sorted(set(old.services) | set(new.services), key=lambda k: (UNITS.index(k[0]), k[1]))
-    rows = []
-    for row, (unit, code) in enumerate(keys, 15):
-        station = "№1-1" if unit == UNITS[0] else "№2-1"
-        rows.append(metrics([unit, station, code, names[code]],
-                            *pair(old.services, new.services, (unit, code)), row))
-    end = write_table("DayHospitalMES", "AllServices14", 14, rows,
-                      labels_for("AllServices14", ["ЖК", "Стационар", "Код МЭС", "МЭС. Название"]))
-    writer.colors(name, ("G", "K", "N"), 15, end)
-    for row in range(15, end + 1):
-        ws.cell(row, 3).number_format = "@"
-        ws.row_dimensions[row].height = max(46, 16 * ((len(str(ws.cell(row, 4).value or "")) + 24) // 25))
-
-    doctor_header = end + 4
-    title(doctor_header - 1, "По врачам дневного стационара")
-    doctor_names = old.doctor_names | new.doctor_names
-    keys = sorted(set(old.doctors) | set(new.doctors), key=lambda k: (UNITS.index(k[0]), k[1]))
-    rows = []
-    for row, key in enumerate(keys, doctor_header + 1):
-        unit, doctor = key
-        x, y = pair(old.doctors, new.doctors, key)
-        rows.append(metrics([unit, doctor_names[doctor]], x, y, row) + [len(x.codes), len(y.codes)])
-    end = write_table("DayHospitalDoctors", "DoctorComparison14", doctor_header, rows,
-                      labels_for("DoctorComparison14", ["ЖК", "Врач"]))
-    writer.colors(name, ("E", "I", "L"), doctor_header + 1, end)
+        writer.ends[name] = row
 
 
 def build_book(template, old, new, dates):
@@ -1354,167 +1364,9 @@ def build_book(template, old, new, dates):
     )
     writer.book["Коротко"].freeze_panes = "B7"
 
-    writer.text(
-        "Планетная",
-        "A1",
-        "ЖК №3, №5, №6, №7 и ЦЖЗ на Планетной",
-    )
-    writer.text(
-        "Планетная",
-        "A2",
-        period,
-    )
-
-    summary = []
-
-    for r, title, source_col in (
-        (6, "Количество услуг", "B"),
-        (7, "Сумма, руб.", "F"),
-        (8, "Средняя стоимость 1 услуги, руб.", "I"),
-    ):
-        second_col = get_column_letter(
-            range_boundaries(
-                f"{source_col}1:{source_col}1"
-            )[0] + 1
-        )
-
-        summary.append([
-            title,
-            f"='Подразделения'!{source_col}8",
-            f"='Подразделения'!{second_col}8",
-            f"=C{r}-B{r}",
-            f'=IF(B{r}=0,"",D{r}/B{r})',
-        ])
-
-    table(
-        "Планетная",
-        "PlanetaSummary14",
-        5,
-        1,
-        summary,
-    )
-
-    ws = writer.book["Планетная"]
-    ws["B5"], ws["C5"] = labels
-
-    writer.text(
-        "Планетная",
-        "A11",
-        "Какие источники вошли в сравнение",
-    )
-
-    sources = []
-
-    for label, data in zip(labels, (old, new)):
-        for (unit, source), bucket in sorted(
-            data.sources.items()
-        ):
-            if unit == PLANET:
-                r = 13 + len(sources)
-
-                sources.append([
-                    label,
-                    "ЦЖЗ" if source == PLANET else "Отдельные ЖК",
-                    source,
-                    bucket.quantity,
-                    bucket.money,
-                    f'=IF(D{r}=0,"",E{r}/D{r})',
-                    len(bucket.doctors),
-                    len(bucket.codes),
-                    len(bucket.positions),
-                ])
-
-    end = table(
-        "Планетная",
-        "PlanetaSources14",
-        12,
-        1,
-        sources,
-    )
-
-    ws["I12"] = "Позиций врач–код–название–тариф"
-
-    group_header = max(21, end + 4)
-
-    writer.text(
-        "Планетная",
-        f"A{group_header - 1}",
-        "Какие группы изменили объём Планетной",
-    )
-
-    group_rows = []
-
-    groups = sorted(
-        {
-            group(code)
-            for unit, code in service_keys
-            if unit == PLANET
-        },
-        key=lambda g: (
-            g == "Другие услуги",
-            g,
-        ),
-    )
-
-    for r, g in enumerate(
-        groups,
-        group_header + 1,
-    ):
-        aggregates = []
-
-        for data in (old, new):
-            entries = [
-                v
-                for (unit, code), v in data.services.items()
-                if unit == PLANET and group(code) == g
-            ]
-
-            aggregates.append(
-                Bucket(
-                    quantity=sum(
-                        (v.quantity for v in entries),
-                        ZERO,
-                    ),
-                    money=sum(
-                        (v.money for v in entries),
-                        ZERO,
-                    ),
-                )
-            )
-
-        group_rows.append(
-            metrics(
-                [g],
-                *aggregates,
-                r,
-            )
-        )
-
-    end = table(
-        "Планетная",
-        "PlanetaGroups14",
-        group_header,
-        1,
-        group_rows,
-    )
-
-    writer.colors(
-        "Планетная",
-        ("D",),
-        6,
-        8,
-    )
-    writer.colors(
-        "Планетная",
-        ("D", "H", "K"),
-        group_header + 1,
-        end,
-    )
-
-    ws.freeze_panes = "B6"
-
     if old.day_hospital is not None:
         write_day_hospital_sheet(writer, old, new, labels, period)
+    writer.book.remove(writer.book["Планетная"])
 
     unknown = sorted(
         set(names) - set(writer.groups)
@@ -1548,7 +1400,7 @@ def build_book(template, old, new, dates):
     )
     if old.day_hospital is not None:
         notes.append(
-            "Дневной стационар включён в общие итоги: №1-1 — Лобненская, №2-1 — Петрозаводская. "
+            "Дневной стационар включён в общие итоги: №1-1 — Лобненская, №2-1 — Петрозаводская, №3-1 — Планетная. "
             "Отдельный лист «Дневной стационар» содержит расшифровку уже учтённых услуг."
         )
 

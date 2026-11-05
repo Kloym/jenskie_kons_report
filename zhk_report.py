@@ -663,6 +663,7 @@ class DayHospitalHeaderResolver(HeaderResolver):
 DAY_HOSPITAL_TARGETS = {
     "1-1": "Женская консультация «Центр женского здоровья на Лобненской»",
     "2-1": "Женская консультация «Центр женского здоровья на Петрозаводской»",
+    "3-1": "Женская консультация «Центр женского здоровья на Планетной»",
 }
 
 
@@ -670,9 +671,9 @@ def day_hospital_unit(value: object) -> str | None:
     text = clean_text(value).casefold()
     text = re.sub(r"[‐‑‒–—−]", "-", text)
     match = re.fullmatch(
-        r"дневной\s+стационар\s*(?:№|n|номер)?\s*([12])\s*-\s*1\s*", text
+        r"дневной\s+стационар\s*(?:№|n|номер)?\s*(?:([123])\s*-\s*1|(3))\s*", text
     )
-    return f"{match.group(1)}-1" if match else None
+    return f"{match.group(1) or match.group(2)}-1" if match else None
 
 
 class DayHospitalReader(SourceReader):
@@ -843,7 +844,11 @@ def merge_day_hospital(
     """Добавляет стационар к существующим адресным ЖК, сохраняя их названия."""
     merged = list(departments)
     for addition in additions:
-        stem = "лобненск" if "лобненск" in normalize_key(addition.name) else "петрозаводск"
+        addition_key = normalize_key(addition.name)
+        stem = next((part for part in ("лобненск", "петрозаводск", "планетн")
+                     if part in addition_key), None)
+        if stem is None:
+            raise ReportError(f"Не определена ЖК для стационара: «{addition.name}».")
         candidates = [
             department for department in merged
             if stem in normalize_key(department.name)
@@ -1284,7 +1289,7 @@ class ReportApplication:
                     f"{day_stats.without_discharge_date}."
                 )
             if not day_stats.accepted_rows:
-                print("Внимание: за выбранный период нет записей стационаров №1-1 и №2-1.")
+                print("Внимание: за выбранный период нет записей стационаров №1-1, №2-1 и №3-1.")
         if not departments:
             scope = "подразделениям" if args.all_departments else "женским консультациям"
             raise ReportError(
