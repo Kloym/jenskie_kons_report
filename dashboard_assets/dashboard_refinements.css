@@ -1,18 +1,20 @@
 /* Operate mode: compact overview, explicit scopes, one moving analytical focus.
-   Desktop: available width = viewport - 64px; two equal charts + 20px gutter.
+   Desktop: available width = viewport - 64px; leading quantity chart, secondary amount chart.
    Preserve the hospital identity and the existing blue data accent. */
-:root{--ease-out:cubic-bezier(.23,1,.32,1);--motion-fast:160ms;--motion-state:220ms}
+:root{--ease-out:cubic-bezier(.23,1,.32,1);--motion-fast:160ms;--motion-state:220ms;--ground:#f4f6f8;--surface:#ffffff;--raised:#f0f3f5;--text:#18222f;--muted:#52606f;--line:#d8dee5;--soft-line:#e5e9ee;--control:#8b95a1;--radius:12px;--shadow:none;--button-shadow:none;--float-shadow:0 8px 24px rgb(0 0 0 / .12);--chart-secondary:#65778b}
+:root[data-theme=dark]{--ground:#131619;--surface:#1b2026;--raised:#252c34;--text:#edf0f4;--muted:#abb5c1;--line:#3a424c;--soft-line:#303841;--control:#75808d;--shadow:none;--button-shadow:none;--float-shadow:0 8px 24px rgb(0 0 0 / .3);--chart-secondary:#b1bdcb}
+body{letter-spacing:0}
 ::selection{background:var(--accent);color:var(--surface)}
 input{caret-color:var(--accent)}
 .masthead{min-height:76px;padding-top:14px;padding-bottom:14px}
-h1{font-size:28px;letter-spacing:-.6px;margin:0 0 6px}
+h1{font-size:28px;font-weight:600;letter-spacing:-.6px;margin:0 0 8px}
 .title-row{margin-bottom:14px}.period{margin-bottom:4px}.period::before{display:none}
 .notice{margin-bottom:14px;font-size:12px}
-.panel,.kpis,.annual-plan,.filter-panel{box-shadow:none;border:1px solid var(--soft-line);border-radius:16px}
-.panel{padding:20px}.kpis{padding:18px 0;margin-bottom:16px}.kpi.lead::before{display:none}
-.overview-grid{display:block;margin-bottom:22px}
+.panel,.kpis,.annual-plan,.filter-panel{box-shadow:none;border:1px solid var(--soft-line);border-radius:12px}
+.panel{padding:20px}.kpis{padding:20px 0;margin-bottom:24px}.kpi.lead::before{display:none}
+.overview-grid{display:block;margin-bottom:24px}
 .kpi strong{font-size:28px}.kpi.lead strong{font-size:34px}.kpi small{font-size:12px}.kpi>span{font-size:13px}
-.filter-panel{padding:0 20px;margin-bottom:12px}.filter-topline{padding:10px 0}
+.filter-panel{padding:0 20px;margin-bottom:12px}.filter-topline{padding:8px 0;gap:16px}
 .filter-scope{font-size:12px;margin:12px 0 0;line-height:1.5}.filters{padding:12px 0;gap:16px}
 .filter-summary{padding:8px 0;min-height:36px}#filterHint{font-size:12px}
 .filters-toggle{display:none}.picker-trigger,.date-pair{min-height:42px;height:42px;box-shadow:none}
@@ -22,7 +24,7 @@ h1{font-size:28px;letter-spacing:-.6px;margin:0 0 6px}
 .report-jumps a:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
 .annual-heading{padding:16px 20px;gap:18px}.annual-heading h2{font-size:16px}
 .annual-head-rate strong{font-size:26px}.annual-plan>.annual-context{margin:0;padding:0 20px 14px;font-size:12px;line-height:1.5;max-width:none}
-.scope-badge{font-size:11px;background:var(--raised);padding:5px 8px;border-radius:6px;color:var(--muted);flex:none}
+.scope-badge{font-size:12px;background:transparent;padding:0;border-radius:0;color:var(--muted);flex:none}
 .annual-volume>strong{font-size:34px;letter-spacing:-1px}.annual-body{padding:0 20px 20px}
 .annual-units{position:relative}.selection-marker{position:absolute;left:0;top:0;width:1px;height:2px;background:var(--accent);pointer-events:none;transform-origin:0 0;border-radius:2px}
 @media(min-width:641px){.annual-units{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.annual-layout{grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:28px}}
@@ -53,7 +55,7 @@ h1{font-size:28px;letter-spacing:-.6px;margin:0 0 6px}
 .annual-axis span:last-child{right:0}
 .annual-volume small,.annual-head-rate span,.annual-month small,.annual-month span,.annual-unit small,.annual-unit-change{font-size:12px}
 .annual-unit-hint,.annual-context,.annual-source-note,.pace-note,.pace-source,.pace-method p{font-size:12px;line-height:1.6}
-.panel-head p,.chart-caption,.signals-panel>.fine{font-size:12px}.panel-head{margin-bottom:14px}
+.panel-head p,.chart-caption,.signals-panel>.fine{font-size:12px}.panel-head{margin-bottom:16px}
 .calendar-panel .panel-head{flex-wrap:wrap}.calendar-panel .panel-head>div{flex:1;min-width:220px}
 .heatmap-scroll th{min-width:34px;padding:6px 2px}.calendar-day b{display:block;font-size:12px;font-weight:600;color:var(--text)}
 .heatmap-scroll td.cell{font-size:12px;min-width:34px;height:32px;cursor:pointer}
@@ -77,6 +79,50 @@ h1{font-size:28px;letter-spacing:-.6px;margin:0 0 6px}
 .signal-label{border:0;background:none;color:var(--negative);font-size:12px;padding:4px;min-height:32px}
 #detailTable .doctor-link{min-height:32px}.table-empty{font-size:13px;line-height:1.6;color:var(--muted);padding:20px 0}
 .fine,.kpi small{font-size:12px}.picker-menu[data-instant=true]{animation:none}
+/* Unslop pass: quiet controls, one leading chart, report-like alignment.
+   Direction reviewed with unslop by Damir Sokolovsky (CC BY 4.0).
+   https://github.com/heydamir/unslop — theme-switch deliberately preserved. */
+h2,.annual-heading h2{font-weight:600;letter-spacing:0}
+.panel-head p,.unit,.count,.scope-badge,.annual-plan h3{letter-spacing:0}
+.header-actions button{border-radius:8px;min-height:40px;padding:8px 12px;box-shadow:none}
+.header-actions .icon-button{padding:10px}
+.primary{border-radius:8px;min-height:44px;padding:12px 16px;box-shadow:none;font-weight:500}
+@media(hover:hover) and (pointer:fine){.primary:hover{box-shadow:none}}
+.tabs{gap:24px;padding:0;background:transparent;border:0;border-radius:0}
+.tabs button{padding:12px 0;border:0;border-bottom:2px solid transparent;border-radius:0;min-height:44px;background:transparent}
+.tabs button[aria-selected=true]{background:transparent;border-bottom-color:var(--accent);box-shadow:none;color:var(--accent)}
+@media(hover:hover) and (pointer:fine){.tabs button:hover{background:transparent}}
+.filter-chip{border-radius:6px;padding:4px 8px;min-height:32px;box-shadow:none}
+.date-shortcuts button{border-radius:6px;padding:4px 8px}
+.picker-trigger,.date-pair,.picker-search-row,.table-toolbar input{border-radius:8px}
+.picker-menu{border-radius:12px;box-shadow:var(--float-shadow)}
+.segment{border-radius:8px;padding:4px}.segment button{border-radius:4px;padding:8px 12px}
+.segment button[aria-pressed=true]{box-shadow:none}
+#moreButton,.mobile-method,.annual-toggle,.dialog-heading button{border-radius:8px;box-shadow:none}
+.annual-toggle{padding:8px 12px;min-height:40px}
+.unit{background:transparent;padding:0;border-radius:0;font-size:12px;line-height:20px}
+.chart-grid,.analysis-grid,.patterns-grid{margin-bottom:24px;gap:24px}
+.chart-grid .chart{height:240px}
+.chart .gridline{stroke:var(--soft-line);stroke-dasharray:none}
+.chart .mainline{stroke-width:2}
+#amountChart{--accent:var(--chart-secondary)}
+.chart-caption{margin-top:12px}
+.heatmap-scroll td.cell{border-radius:3px}
+.heatmap-scroll .weekend{font-style:normal}
+.signals-panel .count{background:transparent;border:0;border-radius:0;padding:0;font-size:16px;font-weight:500}
+.signal{padding:12px 0}.signal strong{background:transparent;padding:0;border-radius:0;font-size:12px}
+.weekday-track,.weekday-fill,.mix-track,.mix-fill{border-radius:2px}
+.weekday-track{height:8px}.weekday-fill{background:var(--chart-secondary)}
+.mix-track{height:6px;margin:8px 0 4px}.mix-row{margin:16px 0}
+.annual-plan{margin-bottom:24px}.annual-month{background:transparent;border-top:1px solid var(--line);border-radius:0;padding:16px 0}
+.clinic-unit-pace,.annual-unit[aria-pressed=true] .clinic-unit-pace{background:transparent;border-top:1px solid var(--line);border-radius:0;padding:8px 0;gap:4px}
+.clinic-pace{margin-top:24px;padding-top:24px}.pace-layout{gap:32px}
+.pace-figures .pace-remainder{border-radius:8px;box-shadow:none;padding:12px 16px}
+.annual-change>span:first-child{border-radius:4px;padding:4px 8px}
+dialog,#doctorServicesDialog{border-radius:16px;box-shadow:var(--float-shadow)}
+.services-totals{border-radius:8px}.services-signal-context{border-radius:8px}
+@media(min-width:1101px){.overview-grid .chart-grid{grid-template-columns:minmax(0,2fr) minmax(320px,1fr);gap:24px}.overview-grid .chart-grid .panel{padding:20px}.overview-grid .chart-grid .chart{height:280px}}
+@media(min-width:641px) and (max-width:1100px){.chart-grid{grid-template-columns:1fr}.chart-grid .chart{height:240px}}
 #tooltip{left:0;top:0;pointer-events:none;transition:none;max-width:min(360px,calc(100vw - 16px))}
 html[data-input=keyboard] *,html[data-input=keyboard] *::before,html[data-input=keyboard] *::after{animation:none!important;transition:none!important}
 html[data-input=keyboard] button:active{transform:none}
@@ -98,8 +144,8 @@ html[data-input=keyboard] button:active{transform:none}
  .chart-caption{line-height:1.6}.details-head button,.signal-label{min-height:44px}
 }
 /* A single blue lead metric restores the overview's visual anchor. */
-#summaryKpis{--summary-blue:#1862d3;--summary-ink:#ffffff;--summary-muted:#e1edff;--summary-surface:#f5f9ff;background:var(--summary-surface);padding:0;row-gap:0}
-:root[data-theme=dark] #summaryKpis{--summary-blue:#174f9b;--summary-surface:#202934}
+#summaryKpis{--summary-blue:#1862d3;--summary-ink:#ffffff;--summary-muted:#e1edff;--summary-surface:var(--surface);background:var(--summary-surface);padding:0;row-gap:0}
+:root[data-theme=dark] #summaryKpis{--summary-blue:#174f9b}
 #summaryKpis .kpi{padding:20px 28px;display:flex;flex-direction:column;justify-content:center}
 #summaryKpis .kpi.lead{background:var(--summary-blue);color:var(--summary-ink)}
 #summaryKpis .kpi.lead strong{color:var(--summary-ink)}
@@ -107,6 +153,15 @@ html[data-input=keyboard] button:active{transform:none}
 #summaryKpis .kpi:nth-child(2){border-left:0}
 @media(max-width:900px){#summaryKpis .kpi{padding:18px 20px}#summaryKpis .kpi:nth-child(n+3){border-top:1px solid var(--line)}}
 @media(max-width:640px){#summaryKpis .kpi{padding:16px 12px}}
+@media(max-width:640px){
+ .panel,.annual-plan,.filter-panel,#summaryKpis{border-radius:12px}
+ .header-actions button,.title-row .primary{border-radius:8px}
+ .tabs{gap:16px;border-radius:0}.tabs button{padding:12px 0;border-radius:0}
+ .segment{border-radius:8px}.segment button{min-height:40px;border-radius:4px}
+ .annual-toggle{min-height:44px;border-radius:8px}.chart-grid,.analysis-grid,.patterns-grid{gap:16px;margin-bottom:24px}
+ .chart-grid .chart{height:220px}.unit{font-size:12px;padding:0}
+ .pace-figures .pace-remainder{padding:12px}.pace-layout{gap:24px}
+}
 @media print{#summaryKpis{background:white}#summaryKpis .kpi.lead{background:white!important}#summaryKpis .kpi.lead strong,#summaryKpis .kpi.lead>span,#summaryKpis .kpi.lead small{color:black!important}.annual-unit[aria-pressed=true]{border-color:black}.annual-selected-label{color:black}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
-@media print{.report-jumps,.heat-pagination,.filters-toggle,#allSignals,#closeSignals,.queue-toolbar,#moreSignals,.focus-context{display:none!important}.signal-queue-rows{max-height:none;overflow:visible}.scope-badge{display:none}.panel,.kpis,.annual-plan{box-shadow:none}.kpis{break-inside:avoid}}
+@media print{.report-jumps,.heat-pagination,.filters-toggle,#allSignals,#closeSignals,.queue-toolbar,#moreSignals,.focus-context{display:none!important}.signal-queue-rows{max-height:none;overflow:visible}.scope-badge{display:none}.panel,.kpis,.annual-plan{box-shadow:none}.kpis{break-inside:avoid}.overview-grid .chart-grid{grid-template-columns:1fr 1fr}.overview-grid .chart-grid .chart{height:170px}}

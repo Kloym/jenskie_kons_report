@@ -94,7 +94,8 @@ function niceStep(max,integer){
 // A zero describes services found in this snapshot, not the doctor's working schedule.
 function chartValue(view,day,metric){return day<=D.meta.dataEnd?view.days.get(day)[metric]:null;}
 function chart(id,view,metric,type){
-  const el=$(id), width=Math.max(260,Math.round(el.getBoundingClientRect().width)),height=190;
+  const el=$(id), bounds=el.getBoundingClientRect();
+  const width=Math.max(260,Math.round(bounds.width)),height=Math.max(190,Math.round(bounds.height));
   const left=metric==="amount"?56:40,right=12,top=12,bottom=30;
   const w=width-left-right,h=height-top-bottom,n=view.dates.length;
   const vals=view.dates.map(day=>chartValue(view,day,metric));
@@ -114,7 +115,7 @@ function chart(id,view,metric,type){
     if(value===null){if(type==="line")path();body+='<text x="'+xx+'" y="'+(y(0)-8)+'" text-anchor="middle">·</text>';}
     else if(type==="bar"){
       const bw=Math.max(2,Math.min(22,w/n*.68));
-      body+='<rect class="bar '+(low.has(day)?"low":"")+'" x="'+(xx-bw/2)+'" y="'+y(value)+'" width="'+bw+'" height="'+(y(0)-y(value))+'" rx="4"/>';
+      body+='<rect class="bar '+(low.has(day)?"low":"")+'" x="'+(xx-bw/2)+'" y="'+y(value)+'" width="'+bw+'" height="'+(y(0)-y(value))+'" rx="2"/>';
     }else{points.push([xx,y(value)]);if(low.has(day))body+='<circle cx="'+xx+'" cy="'+y(value)+'" r="4" fill="var(--negative)"/>';}
   }
   if(type==="line")path();
