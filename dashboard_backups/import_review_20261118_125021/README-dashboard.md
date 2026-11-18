@@ -201,3 +201,29 @@ tests/test_dashboard_logic.mjs проверяет реальный JS-модул
 Общие примитивы взаимодействия находятся в `dashboard_assets/dashboard_ui.js`, визуальные уточнения — в `dashboard_assets/dashboard_refinements.css`. Оба файла автоматически встраиваются генератором. Дополнительные Python-пакеты не нужны.
 
 Проверки: `node tests/test_dashboard_ui.cjs` — синтетические данные, медиана, кэш, отсутствующие даты, контраст, прерывание движения и количество услуг по ЖК. Дополнительно выполнено сравнение с предыдущей версией на реальных агрегатах для 25 комбинаций фильтров и индекса ЖК. Тестовые агрегаты с ФИО врачей в репозиторий не включаются.
+
+
+## Сборка EXE для Windows
+
+Собирать Windows EXE нужно на Windows, из актуальной папки проекта. Рядом с `zhk_dashboard.py` должны находиться `zhk_monthly_report.py`, `zhk_annual_plan.py`, `zhk_actuals.py` и вся папка `dashboard_assets` (включая `vendor`).
+
+Установка зависимостей на компьютере сборки:
+
+```bat
+python -m pip install -U pyinstaller
+python -m pip install -r requirements-dashboard.txt
+```
+
+Команда для актуальной версии PyInstaller:
+
+```bat
+python -m PyInstaller --noconfirm --clean --onefile --hidden-import openpyxl --hidden-import xlrd --add-data "dashboard_assets:dashboard_assets" --icon "dashboard_assets/app_icon.ico" zhk_dashboard.py
+```
+
+Или запустите `build_dashboard.bat`. Готовый файл: `dist/zhk_dashboard.exe`. Коллеге нужен этот EXE; Python, библиотеки и отдельная папка dashboard_assets не нужны. Для переноса уже заполненного плана положите **свой проверенный** `annual_plan.json` рядом с EXE. При обновлении заменяйте только EXE, сохраняя JSON коллеги.
+
+Распакуйте/сохраните EXE в обычную папку, доступную пользователю для записи, например «Документы/ЖК». Годовой план и его резервная копия сохраняются рядом с EXE. При запуске через ярлык или из другого каталога место сохранения не меняется. План намеренно не вшивается параметром --add-data: это редактируемые данные пользователя.
+
+Причина прежней ошибки: --hidden-import добавляет модули Python, но не HTML/CSS/JS. Без --add-data шаблоны не попадали в EXE. Кроме того, старый код сохранял annual_plan.json во временную папку _MEI…; она удаляется после завершения onefile. Если старое приложение ещё открыто, скопируйте annual_plan.json из его папки _MEI… (путь виден в ошибке) в постоянную папку до закрытия. Если файл уже удалён, потребуется сохранённая копия или повторный ввод.
+
+Документация: https://pyinstaller.org/en/stable/runtime-information.html и https://pyinstaller.org/en/stable/usage.html#what-to-bundle-where-to-search .

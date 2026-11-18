@@ -24,7 +24,10 @@ from zhk_monthly_report import (
 from zhk_annual_plan import load_config, snapshot, edit_plan
 from zhk_actuals import MonthlyServiceActuals, snapshot_from_services, TARGET_CODES
 
+# PyInstaller resources live inside the bundle (a temporary directory in onefile).
 BASE = Path(__file__).resolve().parent
+# User files must outlive that temporary directory and be independent of cwd.
+APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else BASE
 CENT = Decimal("0.01")
 ALIASES = {
     "date": {"дата", "дата услуги", "дата оказания услуги", "дата выполнения"},
@@ -250,7 +253,7 @@ def write_dashboard(data, output, *, overwrite=False, source=None, plan_path=Non
     if actuals_from_services and not include_plan:
         raise DashboardError("Факт из Excel требует включённого годового плана.")
     if include_plan:
-        plan_source = Path(plan_path) if plan_path is not None else BASE / "annual_plan.json"
+        plan_source = Path(plan_path) if plan_path is not None else APP_DIR / "annual_plan.json"
         if plan_source.exists() or plan_path is not None:
             config = load_config(plan_source)
             data["annualPlan"] = (snapshot_from_services(config, data) if actuals_from_services
@@ -335,12 +338,12 @@ def launch_dashboard():
     plan_status = tk.StringVar()
     def refresh_plan(saved=None):
         try:
-            current = saved or (snapshot(load_config(BASE / "annual_plan.json")) if (BASE / "annual_plan.json").exists() else None)
+            current = saved or (snapshot(load_config(APP_DIR / "annual_plan.json")) if (APP_DIR / "annual_plan.json").exists() else None)
             plan_status.set("На " + date.fromisoformat(current["asOf"]).strftime("%d.%m.%Y") if current else "Ещё не заполнен")
         except ValueError:
             plan_status.set("Проверьте сохранённый план")
     ttk.Label(plan_row, textvariable=plan_status).pack(side="left", padx=10)
-    ttk.Button(plan_row, text="Годовой план…", command=lambda: edit_plan(root, BASE / "annual_plan.json", refresh_plan)).pack(side="right")
+    ttk.Button(plan_row, text="Годовой план…", command=lambda: edit_plan(root, APP_DIR / "annual_plan.json", refresh_plan)).pack(side="right")
     refresh_plan()
     use_excel_actuals = tk.BooleanVar(value=False)
     actuals_checkbox = ttk.Checkbutton(root, text="Факт месяца из Excel: 001983 + 001984",
@@ -401,7 +404,7 @@ def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, help="Полная выгрузка месяца, один файл")
-    parser.add_argument("--input-dir", type=Path, default=BASE / "incoming", help="Берётся только самый новый файл")
+    parser.add_argument("--input-dir", type=Path, default=APP_DIR / "incoming", help="Берётся только самый новый файл")
     parser.add_argument("--date-from", type=user_date)
     parser.add_argument("--date-to", type=user_date, default=local_today())
     parser.add_argument("--output", type=Path)
@@ -419,7 +422,7 @@ def main(argv=None):
     if args.edit_plan:
         import tkinter as tk
         root = tk.Tk(); root.withdraw()
-        editor = edit_plan(root, args.annual_plan or BASE / "annual_plan.json")
+        editor = edit_plan(root, args.annual_plan or APP_DIR / "annual_plan.json")
         if editor is not None:
             root.wait_window(editor)
         root.destroy(); return 0
@@ -430,7 +433,7 @@ def main(argv=None):
             raise DashboardError("Нельзя сочетать --actuals-from-services и --without-annual-plan.")
         source = args.input or latest_snapshot(args.input_dir)
         start = args.date_from or args.date_to.replace(day=1)
-        output = args.output or BASE / "dashboards" / f"dashboard_{start}_{args.date_to}.html"
+        output = args.output or APP_DIR / "dashboards" / f"dashboard_{start}_{args.date_to}.html"
         data = collect(source, start, args.date_to, sheet_name=args.sheet,
                        all_departments=args.all_departments, restore_missing=not args.no_restore_missing,
                        actuals_from_services=args.actuals_from_services)

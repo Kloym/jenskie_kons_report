@@ -23,6 +23,7 @@ from zhk_monthly_report import (
 
 from zhk_annual_plan import load_config, snapshot, edit_plan
 from zhk_actuals import MonthlyServiceActuals, snapshot_from_services, TARGET_CODES
+from zhk_import_review import ImportReview, ImportReviewDialog, FIELDS
 
 # PyInstaller resources live inside the bundle (a temporary directory in onefile).
 BASE = Path(__file__).resolve().parent
@@ -43,6 +44,20 @@ REQUIRED = ("date", "code", "quantity", "tariff", "doctor", "department")
 
 class DashboardError(ValueError):
     pass
+
+
+class ImportCancelled(DashboardError):
+    pass
+
+
+class ImportIssuesError(DashboardError):
+    def __init__(self, review):
+        self.review = review
+        examples = [f"Строка {number}: {'; '.join(errors.values())}"
+                    for number, errors in list(review.issues.items())[:6]]
+        super().__init__(f"Лист «{review.sheet}»: проблемных строк {len(review.issues)}.\n"
+                         + "\n".join(examples)
+                         + "\nЗапустите python zhk_dashboard.py без параметров, чтобы исправить их в окне проверки.")
 
 
 def local_today():
@@ -78,7 +93,8 @@ def header_of(sheet):
 
 
 def collect(path, start, end, *, sheet_name=None, all_departments=False,
-            restore_missing=True, progress=None, actuals_from_services=False):
+            restore_missing=True, progress=None, actuals_from_services=False,
+            resolve_issues=None):
     """One full snapshot, Decimal row totals, compact daily aggregates."""
     path = Path(path).resolve()
     if start > end:
@@ -91,7 +107,6 @@ def collect(path, start, end, *, sheet_name=None, all_departments=False,
     stats = Counter()
     groups = defaultdict(lambda: [Decimal(0), Decimal(0), 0, 0])
     doctors, names = {}, {}
-    donors, pending = defaultdict(set), []
     coverage = set()
     observed_start = observed_end = None
     actuals = MonthlyServiceActuals(end) if actuals_from_services else None
@@ -105,6 +120,8 @@ def collect(path, start, end, *, sheet_name=None, all_departments=False,
         group[3] += int(restored)
         stats["included_rows"] += 1
 
+    source_state = path.stat()
+    source_rows = []
     with _open_source(path) as (sheets, epoch):
         candidates = []
         for sheet in sheets:
@@ -119,85 +136,71 @@ def collect(path, start, end, *, sheet_name=None, all_departments=False,
         if len(candidates) != 1:
             raise DashboardError("Несколько подходящих листов. Укажите --sheet с именем листа.")
         sheet, (header_row, cols) = candidates[0]
+        selected_sheet = sheet.title
         for row_no, row in enumerate(sheet.iter_values(min_row=header_row + 1), header_row + 1):
             if not any(clean_text(v) for v in row):
                 stats["blank_rows"] += 1
                 continue
             stats["source_rows"] += 1
-            where = f"Лист «{sheet.title}», строка {row_no}"
-            def cell(field):
-                index = cols.get(field)
-                return row[index] if index is not None and index < len(row) else None
-            try:
-                day = parse_date(cell("date"), epoch)
-            except (ValueError, TypeError) as exc:
-                raise DashboardError(f"{where}: неверная дата. Отчёт не сформирован.") from exc
-            observed_start = min(observed_start or day, day)
-            observed_end = max(observed_end or day, day)
-            if actuals is not None:
-                try:
-                    actuals.observe(day, cell("department"), cell("code"), cell("quantity"))
-                except (ValueError, TypeError) as exc:
-                    raise DashboardError(f"{where}: {exc}. Отчёт не сформирован.") from exc
-            if not start <= day <= end:
-                stats["outside_period"] += 1
-                continue
-            raw_department = clean_text(cell("department"))
-            department = identify_department(raw_department, day)
-            if not department and not all_departments:
-                stats["excluded_departments"] += 1
-                continue
-            department = department or raw_department or "Подразделение не указано"
-            try:
-                code = service_code(cell("code"))
-                if not code:
-                    raise ValueError("Не заполнен код услуги")
-                quantity = decimal_number(cell("quantity"), "Количество")
-                if quantity < 0 or quantity != quantity.to_integral_value():
-                    raise ValueError("Количество должно быть целым и неотрицательным")
-                if quantity > 10**9:
-                    raise ValueError("Количество превышает допустимый предел")
-                raw_price = cell("tariff")
-                price = None if not clean_text(raw_price) else decimal_number(raw_price, "Тариф")
-                if price is not None and price < 0:
-                    raise ValueError("Тариф должен быть неотрицательным")
-            except (ValueError, TypeError) as exc:
-                raise DashboardError(f"{where}: {exc}. Отчёт не сформирован.") from exc
-            doctor = clean_text(cell("doctor")) or "Врач не указан"
-            if doctor == "Врач не указан":
-                stats["missing_doctor_rows"] += 1
-            doctor_key = normalize_key(doctor)
-            doctors.setdefault(doctor_key, doctor)
-            name = clean_text(cell("name")) or code
-            names.setdefault(code, name)
-            if not clean_text(cell("name")):
-                stats["missing_name_rows"] += 1
-            key = (day.isoformat(), department, doctor_key, code)
-            donor_key = (day.year, day.month, code)
-            coverage.add(day.isoformat())
-            if price is None:
-                pending.append((key, quantity, donor_key, row_no))
-            else:
-                if price > 0:
-                    donors[donor_key].add(price)
-                elif quantity > 0:
-                    stats["zero_tariff_rows"] += 1
-                add(key, quantity, price)
+            # Retain report fields only: no patient names, policies or document IDs.
+            values = {field: row[cols[field]] if field in cols and cols[field] < len(row) else None
+                      for field in FIELDS}
+            source_rows.append((row_no, values))
             if progress and stats["source_rows"] % 10000 == 0:
                 progress(f"Прочитано {stats['source_rows']:,} строк…".replace(",", " "))
-        selected_sheet = sheet.title
-
-    for key, quantity, donor_key, row_no in pending:
-        choices = donors[donor_key]
-        if quantity == 0:
-            price = Decimal(0)
-        elif restore_missing and len(choices) == 1:
-            price = next(iter(choices))
-        else:
-            raise DashboardError(f"Строка {row_no}: пустой тариф; нет единственной цены "
-                                 "этого кода в том же месяце. Заполните тариф в выгрузке.")
-        add(key, quantity, price, True)
-        stats["restored_tariff_rows"] += 1
+    with path.open("rb") as handle:
+        digest = hashlib.sha256()
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    after_read = path.stat()
+    if (source_state.st_size, source_state.st_mtime_ns) != (after_read.st_size, after_read.st_mtime_ns):
+        raise DashboardError("Excel изменился во время чтения. Выберите файл повторно.")
+    review = ImportReview(selected_sheet, epoch, source_rows, start, end,
+                          all_departments=all_departments, restore_missing=restore_missing,
+                          actuals_from_services=actuals_from_services)
+    if progress:
+        progress("Проверка всех строк выгрузки…")
+    if not review.evaluate():
+        if resolve_issues is None:
+            raise ImportIssuesError(review)
+        if not resolve_issues(review):
+            raise ImportCancelled("Сборка отменена. Исходный Excel не изменён.")
+        # Validate caller-supplied decisions as well as decisions from the GUI.
+        if not review.evaluate():
+            raise ImportIssuesError(review)
+    stats["edited_rows"] = len(review.overrides.keys() - review.excluded)
+    stats["excluded_by_user_rows"] = len(review.excluded)
+    if progress:
+        progress("Сборка отчёта по проверенным строкам…")
+    for item in review.prepared:
+        day, values = item.day, item.values
+        observed_start = min(observed_start or day, day)
+        observed_end = max(observed_end or day, day)
+        if actuals is not None:
+            actuals.observe(day, values.get("department"), values.get("code"), values.get("quantity"))
+        if not start <= day <= end:
+            stats["outside_period"] += 1
+            continue
+        if not item.selected:
+            stats["excluded_departments"] += 1
+            continue
+        code, quantity, price = item.code, item.quantity, item.price
+        doctor = clean_text(values.get("doctor")) or "Врач не указан"
+        if doctor == "Врач не указан":
+            stats["missing_doctor_rows"] += 1
+        doctor_key = normalize_key(doctor)
+        doctors.setdefault(doctor_key, doctor)
+        name = clean_text(values.get("name")) or code
+        names.setdefault(code, name)
+        if not clean_text(values.get("name")):
+            stats["missing_name_rows"] += 1
+        key = (day.isoformat(), item.department, doctor_key, code)
+        coverage.add(day.isoformat())
+        if item.restored:
+            stats["restored_tariff_rows"] += 1
+        elif price == 0 and quantity > 0:
+            stats["zero_tariff_rows"] += 1
+        add(key, quantity, price, item.restored)
     if not groups:
         raise DashboardError("За выбранный период нет услуг выбранных подразделений.")
     ds = sorted({k[1] for k in groups})
@@ -214,10 +217,6 @@ def collect(path, start, end, *, sheet_name=None, all_departments=False,
     total_cents = sum(r[5] for r in records)
     if total_q > 9_007_199_254_740_991 or total_cents > 9_007_199_254_740_991:
         raise DashboardError("Итог превышает точный диапазон HTML-отчёта.")
-    with path.open("rb") as handle:
-        digest = hashlib.sha256()
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(block)
     result = {
         "version": 1,
         "meta": {
@@ -228,6 +227,7 @@ def collect(path, start, end, *, sheet_name=None, all_departments=False,
             "created": datetime.now(timezone(timedelta(hours=3))).isoformat(timespec="seconds"),
             "today": local_today().isoformat(), "amountRule": "unit_price",
             "stats": dict(stats), "totalQuantity": total_q, "totalCents": total_cents,
+            "importReview": {"sourceUnchanged": True, "decisions": review.audit()},
             "scope": "Все подразделения" if all_departments else "Женские консультации",
         },
         "departments": ds, "doctors": [doctors[k] for k in docs],
@@ -359,6 +359,19 @@ def launch_dashboard():
     include_plan.trace_add("write", update_actuals_state)
     ttk.Label(root, textvariable=status, wraplength=600).pack(anchor="w", pady=(0, 16))
     messages = queue.Queue()
+    closing = threading.Event()
+    def close_launcher():
+        closing.set()
+        root.destroy()
+    root.protocol("WM_DELETE_WINDOW", close_launcher)
+    def resolve_issues(review):
+        completed = threading.Event()
+        answer = []
+        messages.put(("review", (review, completed, answer)))
+        while not completed.wait(.2):
+            if closing.is_set():
+                return False
+        return bool(answer and answer[0]) and not closing.is_set()
     def build():
         try:
             source = Path(path_var.get())
@@ -376,10 +389,14 @@ def launch_dashboard():
         def worker():
             try:
                 data = collect(source, start, end, progress=lambda text: messages.put(("progress", text)),
-                               actuals_from_services=from_excel)
+                               actuals_from_services=from_excel, resolve_issues=resolve_issues)
+                if closing.is_set():
+                    raise ImportCancelled("Сборка отменена.")
                 result = write_dashboard(data, output, overwrite=True, source=source,
                                          include_plan=use_plan, actuals_from_services=from_excel)
-                messages.put(("done", result))
+                messages.put(("done", (result, data["meta"]["stats"])))
+            except ImportCancelled as exc:
+                messages.put(("cancelled", str(exc)))
             except Exception as exc:
                 messages.put(("error", str(exc)))
         threading.Thread(target=worker, daemon=True).start()
@@ -388,10 +405,26 @@ def launch_dashboard():
             while True:
                 kind, value = messages.get_nowait()
                 if kind == "progress": status.set(value)
+                elif kind == "review":
+                    review, completed, answer = value
+                    status.set(f"Нужно проверить строк: {len(review.issues)}. Открыто окно исправления.")
+                    def finish(accepted, completed=completed, answer=answer):
+                        answer.append(accepted);completed.set()
+                        if accepted:status.set("Изменения приняты. Собираем отчёт…")
+                    try:
+                        ImportReviewDialog(root, review, finish)
+                    except Exception as exc:
+                        finish(False)
+                        messagebox.showerror("Не удалось открыть проверку", str(exc), parent=root)
                 else:
                     button.configure(state="normal")
                     if kind == "done":
-                        status.set(f"Готово: {value.name}"); webbrowser.open(value.as_uri())
+                        result, stats = value
+                        status.set(f"Готово: {result.name}. Исправлено: {stats.get('edited_rows', 0)}, "
+                                   f"исключено вручную: {stats.get('excluded_by_user_rows', 0)}.")
+                        webbrowser.open(result.as_uri())
+                    elif kind == "cancelled":
+                        status.set(value)
                     else:
                         status.set("Отчёт не сформирован."); messagebox.showerror("Ошибка", value)
         except queue.Empty: pass
